@@ -47,7 +47,7 @@ export class DuelRenderer {
       const top = topOf(thing.points ?? thing.strokes.flat());
       const text =
         e.kind === 'chalkling'
-          ? `${ROLE_NAMES[thing.role]}: ${Math.round(thing.hp)} health, bite ${thing.bite.toFixed(0)}, speed ${Math.round(thing.speed)}`
+          ? 'It comes alive!'
           : `${thing.main ? 'Main circle' : NAMES[e.kind]} ${Math.round(e.quality * 100)}%`;
       fx.push({ kind: 'label', text, x: top.x, y: top.y - 10, born: now, life: 2500, color: R.chalkColor });
     } else if (e.type === 'dud') {
@@ -212,26 +212,7 @@ export class DuelRenderer {
     ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h);
     ctx.restore();
 
-    if (c.mode === 'waiting' || c.mode === 'held') {
-      ctx.save();
-      ctx.font = R.labelFont.replace(/^\d+px/, '20px');
-      ctx.textAlign = 'center';
-      ctx.fillStyle = `rgba(${R.makingColor}, ${0.6 + 0.3 * Math.sin(now / 300)})`;
-      ctx.fillText(c.mode === 'waiting' ? '?' : '…', c.pos.x, c.pos.y - c.radius - 18);
-      ctx.restore();
-    }
-
-    if (c.hp < c.max) {
-      const w = Math.max(30, c.radius * 1.4);
-      const x = c.pos.x - w / 2;
-      const y = c.pos.y - c.radius - 14;
-      ctx.save();
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.fillRect(x, y, w, 4);
-      ctx.fillStyle = `rgba(${R.teamColors[c.owner]}, 0.9)`;
-      ctx.fillRect(x, y, (w * c.hp) / c.max, 4);
-      ctx.restore();
-    }
+    drawFacts(ctx, c);
   }
 
   // Rub out damaged sections: draw the bare board back over them,
@@ -310,7 +291,47 @@ function dust(point, now, count, speed) {
   return { kind: 'dust', specks, born: now, life: 700 };
 }
 
-const ROLE_NAMES = { attacker: 'Attacker', defender: 'Defender', runner: 'Runner', balanced: 'Chalkling' };
+const ROLE_NAMES = { attacker: 'Attacker', defender: 'Defender', runner: 'Runner', balanced: 'All-rounder' };
+
+// What a chalkling is doing, in words.
+function statusText(c) {
+  if (c.mode === 'order') return c.order === 'guard' ? 'Guarding' : 'Attacking';
+  return { path: 'On its path', hunt: 'Hunting', return: 'Coming home', waiting: 'Waiting for orders', held: 'Chained' }[c.mode] ?? '';
+}
+
+// A chalkling's facts, always shown above it: role and what it's doing,
+// its health bar, and its health, bite and speed.
+function drawFacts(ctx, c) {
+  const line1 = `${ROLE_NAMES[c.role] ?? 'Chalkling'} · ${statusText(c)}`;
+  const line2 = `health ${Math.max(1, Math.round(c.hp))}/${Math.round(c.max)}  bite ${c.bite.toFixed(0)}  speed ${Math.round(c.speed)}`;
+  ctx.save();
+  ctx.font = '600 12px system-ui, sans-serif';
+  const w = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + 14;
+  const h = 40;
+  const x = c.pos.x - w / 2;
+  const y = Math.max(4, c.pos.y - c.radius - 12 - h);
+  ctx.fillStyle = 'rgba(10, 16, 12, 0.6)';
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 5);
+  ctx.fill();
+  ctx.strokeStyle = `rgba(${R.teamColors[c.owner]}, 0.7)`;
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = `rgba(${c.mode === 'waiting' || c.mode === 'held' ? R.makingColor : R.chalkColor}, 0.95)`;
+  ctx.fillText(line1, c.pos.x, y + 4);
+  ctx.font = '12px system-ui, sans-serif';
+  ctx.fillStyle = `rgba(${R.chalkColor}, 0.85)`;
+  ctx.fillText(line2, c.pos.x, y + 24);
+  // Health bar between the two lines.
+  const barW = w - 14;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.fillRect(x + 7, y + 19, barW, 3);
+  ctx.fillStyle = `rgba(${R.teamColors[c.owner]}, 0.95)`;
+  ctx.fillRect(x + 7, y + 19, (barW * Math.max(0, c.hp)) / c.max, 3);
+  ctx.restore();
+}
 
 function label(point, text, now, color) {
   return { kind: 'label', text, x: point.x, y: point.y - 10, born: now, life: 2400, color, size: 16 };
