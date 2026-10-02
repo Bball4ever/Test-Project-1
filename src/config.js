@@ -63,6 +63,42 @@ export const CONFIG = {
     },
   },
 
+  engine: {
+    // The board is always this many units, whatever the screen size.
+    // The renderer scales it to fit.
+    world: { width: 1600, height: 900 },
+    stepMs: 1000 / 60, // the engine moves forward in steps of exactly this long
+    sideMargin: 8, // how far past the center line a stroke may stray
+
+    // --- Lines of Warding ---
+    sections: 24, // arc sections per circle, each with its own health
+    sectionHealth: 100, // × circle quality
+    // Sections where your line wobbles get weaker. Wobble is measured as how far
+    // the drawn line strays from the perfect circle there (fraction of the radius).
+    wobblePenalty: 1, // 0 turns this off, 1 is full strength
+    wobbleScale: 0.15, // this much local wobble counts as "fully wobbly"
+    minSectionFactor: 0.2, // a section never drops below this fraction of its health
+
+    // --- Lines of Forbiddance ---
+    wallHealth: 150, // × line quality (only matters once chalklings exist)
+    wallDamageFromBounce: 0, // fraction of a Vigor's power a wall loses per bounce
+
+    // --- Lines of Vigor ---
+    vigorDamage: 40, // × wave quality
+    vigorSpeed: 520, // units per second
+    bounceLoss: 0.3, // power lost per bounce off a wall
+    minVigorPower: 5, // a Vigor weaker than this fizzles out
+  },
+
+  dummy: {
+    center: { x: 1200, y: 450 },
+    radius: 150,
+    drawMs: 1400, // how long the dummy takes to draw its circle
+    startDelayMs: 600,
+    neat: { noise: 1.5, squash: 1, sweep: 1.03 },
+    sloppy: { noise: 11, squash: 0.86, sweep: 0.98 },
+  },
+
   render: {
     boardColor: '#1d2a23',
     chalkColor: '235, 238, 228', // r, g, b

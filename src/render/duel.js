@@ -1,0 +1,210 @@
+// Draws a duel. It reads the engine's state and never changes it.
+//
+// Short-lived visual effects (dust puffs, labels, fading duds) live here, not in
+// the engine: they're just decoration, and the duel plays out the same without them.
+
+import { CONFIG } from '../config.js';
+import { drawChalk, cacheChalk } from './board.js';
+import { NAMES } from './feedback.js';
+
+const R = CONFIG.render;
+
+export class DuelRenderer {
+  constructor(board) {
+    this.board = board;
+    this.reset();
+  }
+
+  reset() {
+    this.caches = new Map(); // id → pre-drawn chalk picture
+    this.bands = new Map(); // ward id → how far its chalk strays from the circle
+    this.effects = [];
+    this.version = this.board.version;
+  }
+
+  // Pre-draw a line's chalk once; redraw only if the screen was resized.
+  cached(key, points, seed, color = R.chalkColor) {
+    if (this.version !== this.board.version) {
+      this.caches.clear();
+      this.version = this.board.version;
+    }
+    let c = this.caches.get(key);
+    if (!c) {
+      c = cacheChalk(points, seed, this.board.resolution, color);
+      this.caches.set(key, c);
+    }
+    return c;
+  }
+
+  // Turn an engine event into something to see.
+  handleEvent(e, state, now) {
+    const fx = this.effects;
+    if (e.type === 'placed') {
+      const thing = [...state.wards, ...state.walls, ...state.vigors].find((t) => t.id === e.id);
+      if (!thing) return;
+      const top = topOf(thing.points);
+      const name = thing.main ? 'Main circle' : NAMES[e.kind];
+      fx.push({ kind: 'label', text: `${name} ${Math.round(e.quality * 100)}%`, x: top.x, y: top.y - 10, born: now, life: 2500, color: R.chalkColor });
+    } else if (e.type === 'dud') {
+      const top = topOf(e.points);
+      const cache = cacheChalk(e.points, e.tick * 31 + 7, this.board.resolution, R.dudColor);
+      fx.push({ kind: 'dud', cache, born: now, life: R.dudFadeMs });
+      fx.push({ kind: 'label', text: e.reason, x: top.x, y: top.y - 10, born: now, life: R.dudFadeMs, color: R.dudColor });
+    } else if (e.type === 'hit') {
+      fx.push(dust(e.point, now, 16, 70));
+      fx.push({ kind: 'label', text: `-${Math.round(e.damage)}`, x: e.point.x, y: e.point.y - 14, rise: 30, born: now, life: 1100, color: R.dudColor });
+    } else if (e.type === 'bounce' || e.type === 'fizzle') {
+      fx.push(dust(e.point, now, 8, 40));
+    } else if (e.type === 'shieldBroken') {
+      fx.push(dust(e.point, now, 30, 110));
+    } else if (e.type === 'breach') {
+      fx.push(dust(e.point, now, 60, 180));
+      fx.push({ kind: 'ring', x: e.point.x, y: e.point.y, born: now, life: 900 });
+      fx.push({ kind: 'label', text: 'BREACH!', x: e.point.x, y: e.point.y - 30, rise: 40, born: now, life: 2200, color: R.dudColor, size: 34 });
+    }
+  }
+
+  draw(state, liveStrokes, now) {
+    const ctx = this.board.ctx;
+
+    for (const wall of state.walls) {
+      const c = this.cached(wall.id, wall.points, wall.id * 7919);
+      ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h);
+    }
+
+    for (const ward of state.wards) {
+      const c = this.cached(ward.id, ward.points, ward.id * 7919);
+      ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h);
+      this.drawDamage(ctx, ward);
+      if (ward.main) drawDuelist(ctx, ward.center);
+    }
+
+    for (const v of state.vigors) {
+      // The Vigor is your actual drawing, slid along and turned to face where it's going.
+      const c = this.cached(v.id, v.points, v.id * 7919);
+      const turn = Math.atan2(v.vel.y, v.vel.x) - Math.atan2(v.launchDir.y, v.launchDir.x);
+      ctx.save();
+      ctx.translate(v.pos.x, v.pos.y);
+      ctx.rotate(turn);
+      ctx.translate(-v.launchTip.x, -v.launchTip.y);
+      ctx.globalAlpha = 0.4 + 0.6 * Math.min(1, v.power / (CONFIG.engine.vigorDamage * v.quality));
+      ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h);
+      ctx.restore();
+    }
+
+    for (const live of liveStrokes) drawChalk(ctx, live.points, live.seed);
+
+    this.drawEffects(ctx, now);
+  }
+
+  // Rub out damaged sections: draw the bare board back over them,
+  // more strongly the more damage they've taken.
+  drawDamage(ctx, ward) {
+    const n = ward.sections.length;
+    const band = this.bandFor(ward);
+    const { x, y } = ward.center;
+    const { width, height } = this.board.world;
+    ward.sections.forEach((s, k) => {
+      const lost = 1 - s.health / s.max;
+      if (lost <= 0) return;
+      const a0 = (k / n) * Math.PI * 2;
+      const a1 = ((k + 1) / n) * Math.PI * 2;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(x, y, ward.radius + band, a0, a1);
+      ctx.arc(x, y, Math.max(0, ward.radius - band), a1, a0, true);
+      ctx.closePath();
+      ctx.clip();
+      ctx.globalAlpha = s.health <= 0 ? 1 : Math.min(0.92, 0.2 + lost * 0.8);
+      ctx.drawImage(this.board.background, 0, 0, width, height);
+      ctx.restore();
+    });
+  }
+
+  bandFor(ward) {
+    let band = this.bands.get(ward.id);
+    if (band === undefined) {
+      band = 0;
+      for (const p of ward.points) band = Math.max(band, Math.abs(Math.hypot(p.x - ward.center.x, p.y - ward.center.y) - ward.radius));
+      band += R.chalkWidth * 2 + 4;
+      this.bands.set(ward.id, band);
+    }
+    return band;
+  }
+
+  drawEffects(ctx, now) {
+    this.effects = this.effects.filter((f) => now - f.born < f.life);
+    for (const f of this.effects) {
+      const t = (now - f.born) / f.life; // 0 → 1 over the effect's life
+      ctx.save();
+      if (f.kind === 'dud') {
+        ctx.globalAlpha = 1 - t;
+        ctx.drawImage(f.cache.canvas, f.cache.x, f.cache.y, f.cache.w, f.cache.h);
+      } else if (f.kind === 'label') {
+        ctx.globalAlpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
+        ctx.font = R.labelFont.replace(/^\d+px/, `${f.size ?? 18}px`);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillStyle = `rgba(${f.color}, 0.9)`;
+        ctx.fillText(f.text, clampX(f.x, this.board.world.width), Math.max(24, f.y - (f.rise ?? 0) * t));
+      } else if (f.kind === 'dust') {
+        ctx.fillStyle = `rgba(${R.chalkColor}, ${0.7 * (1 - t)})`;
+        const secs = (now - f.born) / 1000;
+        for (const p of f.specks) ctx.fillRect(p.x + p.vx * secs, p.y + p.vy * secs + 40 * secs * secs, p.size, p.size);
+      } else if (f.kind === 'ring') {
+        ctx.strokeStyle = `rgba(${R.dudColor}, ${1 - t})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(f.x, f.y, 10 + t * 90, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+}
+
+// A puff of chalk dust. (Math.random is fine here: it's only decoration.)
+function dust(point, now, count, speed) {
+  const specks = Array.from({ length: count }, () => {
+    const a = Math.random() * Math.PI * 2;
+    const v = speed * (0.3 + Math.random() * 0.7);
+    return { x: point.x, y: point.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: 1.5 + Math.random() * 2 };
+  });
+  return { kind: 'dust', specks, born: now, life: 700 };
+}
+
+// A little chalk figure standing in the middle of a main circle.
+function drawDuelist(ctx, c) {
+  ctx.save();
+  ctx.strokeStyle = `rgba(${R.chalkColor}, 0.75)`;
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(c.x, c.y - 24, 8, 0, Math.PI * 2);
+  ctx.moveTo(c.x, c.y - 16);
+  ctx.lineTo(c.x, c.y + 8);
+  ctx.moveTo(c.x - 12, c.y - 6);
+  ctx.lineTo(c.x + 12, c.y - 6);
+  ctx.moveTo(c.x, c.y + 8);
+  ctx.lineTo(c.x - 9, c.y + 26);
+  ctx.moveTo(c.x, c.y + 8);
+  ctx.lineTo(c.x + 9, c.y + 26);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function topOf(points) {
+  let top = points[0];
+  let minX = Infinity;
+  let maxX = -Infinity;
+  for (const p of points) {
+    if (p.y < top.y) top = p;
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x);
+  }
+  return { x: (minX + maxX) / 2, y: top.y };
+}
+
+function clampX(x, width) {
+  return Math.max(90, Math.min(width - 90, x));
+}

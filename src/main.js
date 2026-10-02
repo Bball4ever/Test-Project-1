@@ -1,102 +1,129 @@
-// Wires the pieces together: input → recognizer → what's on the board → renderer.
-//
-// Milestone 1 has no duel engine yet, so the "state" is just a list of drawn
-// strokes kept here. In milestone 2 the engine takes over that job.
+// Wires the pieces together:
+//   controllers (you, the dummy) → engine (rules) → renderer (pictures).
 
 import { CONFIG } from './config.js';
-import { recognize } from './recognizer/index.js';
+import { createDuel, addStroke, step, mainWard } from './engine/duel.js';
 import { HumanController } from './controllers/human.js';
-import { Board, drawChalk, cacheChalk } from './render/board.js';
-import { drawLabel } from './render/feedback.js';
-import { drawDebugShapes, debugPanelText } from './render/debug.js';
+import { DummyController } from './controllers/dummy.js';
+import { Board } from './render/board.js';
+import { DuelRenderer } from './render/duel.js';
+import { drawDuelDebug, debugPanelText } from './render/debug.js';
 
-const canvas = document.getElementById('board');
-const panel = document.getElementById('debug-panel');
-const toast = document.getElementById('toast');
+const $ = (id) => document.getElementById(id);
+const canvas = $('board');
 const board = new Board(canvas);
+const renderer = new DuelRenderer(board);
 
-const strokes = []; // { raw, pointerType, seed, result, cache, box, bornAt }
+let state = null; // the engine's duel state (null before the first Start)
+let dummy = null;
+let dummyLive = null; // the part of its circle the dummy has drawn so far
+let dummyStyle = 'neat';
+let lastStroke = null; // for the debug panel and "Save stroke"
+let wavesThrown = 0;
+let endShown = false;
 let debug = false;
 
-const controller = new HumanController(canvas, {
+const human = new HumanController(canvas, {
+  owner: 'left',
+  toWorld: (x, y) => board.toWorld(x, y),
   onStroke(stroke) {
-    const result = recognize(stroke.points);
-    const color = result.type === 'dud' ? CONFIG.render.dudColor : CONFIG.render.chalkColor;
-    const cache = cacheChalk(stroke.points, stroke.seed, board.dpr, color);
-    strokes.push({
-      raw: stroke.points,
-      pointerType: stroke.pointerType,
-      seed: stroke.seed,
-      result,
-      cache,
-      box: { x: cache.x, y: cache.y, w: cache.w, h: cache.h },
-      bornAt: performance.now(),
-    });
-    updatePanel();
+    if (!state || state.winner) return;
+    const { accepted, result } = addStroke(state, 'left', stroke.points);
+    if (!result) return;
+    lastStroke = { result, pointerType: stroke.pointerType, raw: stroke.points };
+    if (accepted && result.type === 'vigor') wavesThrown++;
   },
 });
 
-// --- The render loop ---------------------------------------------------------
-// requestAnimationFrame asks the browser to call us right before it next paints
-// the screen (about 60 times a second). Each call redraws the whole board.
+function startDuel() {
+  state = createDuel();
+  dummy = new DummyController({ owner: 'right', style: dummyStyle });
+  dummyLive = null;
+  renderer.reset();
+  human.cancelAll();
+  wavesThrown = 0;
+  endShown = false;
+  lastStroke = null;
+  accumulator = 0;
+  $('start').hidden = true;
+  $('end').hidden = true;
+}
+
+function showEnd() {
+  endShown = true;
+  const won = state.winner === 'left';
+  $('end-title').textContent = won ? 'Breach! You win.' : 'You were breached.';
+  const secs = (state.timeMs / 1000).toFixed(1);
+  $('end-stats').textContent = `${secs} seconds, ${wavesThrown} Line${wavesThrown === 1 ? '' : 's'} of Vigor thrown. Dummy's circle: ${dummyStyle}.`;
+  $('end').hidden = false;
+}
+
+// --- The game loop -------------------------------------------------------------
+// The engine moves in fixed steps (1/60 s). Each frame we work out how much real
+// time has passed and run that many steps, so the duel runs at the same speed on
+// a slow Chromebook and a fast PC. Then we draw whatever the state is now.
+
+let accumulator = 0;
+let lastTime = performance.now();
+let breachAt = null;
 
 function frame(now) {
-  const ctx = board.ctx;
-  board.drawBackground();
+  const elapsed = Math.min(250, now - lastTime); // after a pause, don't try to catch up forever
+  lastTime = now;
 
-  for (let i = strokes.length - 1; i >= 0; i--) {
-    const s = strokes[i];
-    let alpha = 1;
-    if (s.result.type === 'dud') {
-      alpha = 1 - (now - s.bornAt) / CONFIG.render.dudFadeMs;
-      if (alpha <= 0) {
-        strokes.splice(i, 1);
-        continue;
-      }
+  if (state) {
+    accumulator += elapsed;
+    while (accumulator >= CONFIG.engine.stepMs) {
+      dummyLive = dummy.update(state);
+      step(state);
+      accumulator -= CONFIG.engine.stepMs;
     }
-    s.alpha = alpha;
+    for (const e of state.events.splice(0)) {
+      renderer.handleEvent(e, state, now);
+      if (e.type === 'breach') breachAt = now;
+    }
+    if (state.winner && !endShown && now - breachAt > 1400) showEnd();
   }
 
-  for (const s of strokes) {
-    ctx.save();
-    ctx.globalAlpha = s.alpha;
-    ctx.drawImage(s.cache.canvas, s.cache.x, s.cache.y, s.cache.w, s.cache.h);
-    ctx.restore();
-    if (debug) drawDebugShapes(ctx, s, s.alpha);
-    drawLabel(ctx, s, s.alpha, board.width);
+  board.beginFrame();
+  if (state) {
+    const live = human.liveStrokes();
+    if (dummyLive) live.push(dummyLive);
+    renderer.draw(state, live, now);
+    if (debug) drawDuelDebug(board.ctx, state);
   }
-
-  for (const live of controller.liveStrokes()) drawChalk(ctx, live.points, live.seed);
-
+  updateHud();
   requestAnimationFrame(frame);
 }
 
-// --- Keys and buttons --------------------------------------------------------
+function updateHud() {
+  let hint = 'Choose a dummy and press Start.';
+  if (state?.winner) hint = 'The duel is over.';
+  else if (state) {
+    hint = mainWard(state, 'left')
+      ? 'Attack with waves (Vigor). Straight lines (Forbiddance) make walls that waves bounce off.'
+      : 'Draw your main circle on the left half.';
+  }
+  if ($('hint').textContent !== hint) $('hint').textContent = hint;
+  if (debug) $('debug-panel').textContent = debugPanelText(lastStroke, state);
+}
+
+// --- Keys and buttons ----------------------------------------------------------
 
 function toggleDebug() {
   debug = !debug;
-  panel.hidden = !debug;
-  updatePanel();
-}
-
-function updatePanel() {
-  if (debug) panel.textContent = debugPanelText(strokes[strokes.length - 1]);
-}
-
-function clearBoard() {
-  strokes.length = 0;
-  updatePanel();
+  $('debug-panel').hidden = !debug;
 }
 
 // Copy the last stroke as JSON, ready to paste into tests/fixtures/recorded.json.
 async function saveStroke() {
-  const s = strokes[strokes.length - 1];
-  if (!s) return showToast('Draw something first');
+  if (!lastStroke) return showToast('Draw something first');
+  const r = lastStroke.result;
   const record = {
-    expect: s.result.type,
-    device: s.pointerType,
-    note: s.result.reason ?? `quality ${s.result.quality.toFixed(2)}`,
-    points: s.raw.map((p) => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]),
+    expect: r.type === 'dud' && r.guess ? r.guess : r.type,
+    device: lastStroke.pointerType,
+    note: r.reason ?? `quality ${r.quality.toFixed(2)}`,
+    points: lastStroke.raw.map((p) => [Math.round(p.x * 10) / 10, Math.round(p.y * 10) / 10]),
   };
   const json = JSON.stringify(record);
   console.log(json);
@@ -110,10 +137,10 @@ async function saveStroke() {
 
 let toastTimer;
 function showToast(text) {
-  toast.textContent = text;
-  toast.hidden = false;
+  $('toast').textContent = text;
+  $('toast').hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (toast.hidden = true), 3500);
+  toastTimer = setTimeout(() => ($('toast').hidden = true), 3500);
 }
 
 window.addEventListener('keydown', (e) => {
@@ -121,10 +148,20 @@ window.addEventListener('keydown', (e) => {
   const key = e.key.toLowerCase();
   if (key === 'd') toggleDebug();
   else if (key === 's') saveStroke();
-  else if (key === 'c') clearBoard();
 });
-document.getElementById('btn-debug').addEventListener('click', toggleDebug);
-document.getElementById('btn-save').addEventListener('click', saveStroke);
-document.getElementById('btn-clear').addEventListener('click', clearBoard);
+$('btn-debug').addEventListener('click', toggleDebug);
+$('btn-save').addEventListener('click', saveStroke);
+$('btn-start').addEventListener('click', startDuel);
+$('btn-rematch').addEventListener('click', startDuel);
+$('btn-change').addEventListener('click', () => {
+  $('end').hidden = true;
+  $('start').hidden = false;
+});
+for (const pick of document.querySelectorAll('[data-style]')) {
+  pick.addEventListener('click', () => {
+    dummyStyle = pick.dataset.style;
+    for (const p of document.querySelectorAll('[data-style]')) p.classList.toggle('selected', p === pick);
+  });
+}
 
 requestAnimationFrame(frame);

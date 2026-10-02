@@ -12,12 +12,15 @@ npm start
 
 Then open http://localhost:8000 in Chrome.
 
-## Controls (Milestone 1)
+## How to play (Milestone 2: practice duel)
 
-- Draw a **circle** (Line of Warding), a **straight line** (Line of Forbiddance) or a **wave** (Line of Vigor).
-- **D**: debug overlay with the numbers behind each score
-- **S**: copy your last stroke as JSON (to turn it into a test)
-- **C**: clear the board
+1. Pick the dummy's circle (neat or sloppy) and press **Start duel**.
+2. On the **left** half, draw a **circle** first. That's your main Line of Warding, and you stand in it.
+3. Draw **waves** (Lines of Vigor) to attack. They fly the way you drew them.
+4. Draw **straight lines** (Lines of Forbiddance) as walls. Waves bounce off them and lose 30% power each bounce.
+5. Break any one section of the dummy's circle to win.
+
+Keys: **D** shows the debug overlay (section health, the numbers behind each score). **S** copies your last stroke as JSON for tests.
 
 ## Tests
 

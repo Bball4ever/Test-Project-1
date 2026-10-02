@@ -6,10 +6,14 @@ import { resample } from '../recognizer/clean.js';
 
 const R = CONFIG.render;
 
+// The board is a fixed-size world (CONFIG.engine.world). We scale it to fit the
+// screen, keeping its shape, and leave dark bars at the sides if needed.
 export class Board {
-  constructor(canvas) {
+  constructor(canvas, world = CONFIG.engine.world) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
+    this.world = world;
+    this.version = 0; // goes up on every resize, so cached pictures know to redraw
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -18,16 +22,37 @@ export class Board {
   // several real pixels (devicePixelRatio), so we draw at full resolution.
   resize() {
     this.dpr = window.devicePixelRatio || 1;
-    this.width = this.canvas.clientWidth;
-    this.height = this.canvas.clientHeight;
-    this.canvas.width = Math.round(this.width * this.dpr);
-    this.canvas.height = Math.round(this.height * this.dpr);
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    this.background = makeBackground(this.width, this.height, this.dpr);
+    const cssW = this.canvas.clientWidth;
+    const cssH = this.canvas.clientHeight;
+    this.canvas.width = Math.round(cssW * this.dpr);
+    this.canvas.height = Math.round(cssH * this.dpr);
+    this.scale = Math.min(cssW / this.world.width, cssH / this.world.height);
+    this.offsetX = (cssW - this.world.width * this.scale) / 2;
+    this.offsetY = (cssH - this.world.height * this.scale) / 2;
+    // Real screen pixels per world unit: used to draw cached pictures sharply.
+    this.resolution = this.dpr * this.scale;
+    this.background = makeBackground(this.world.width, this.world.height, this.resolution);
+    this.version++;
   }
 
-  drawBackground() {
-    this.ctx.drawImage(this.background, 0, 0, this.width, this.height);
+  // Screen position (from a pointer event) → world position.
+  toWorld(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    return {
+      x: (clientX - rect.left - this.offsetX) / this.scale,
+      y: (clientY - rect.top - this.offsetY) / this.scale,
+    };
+  }
+
+  // Clear the screen and draw the empty board. Afterwards the canvas is set up
+  // so that everything is drawn in world units.
+  beginFrame() {
+    const ctx = this.ctx;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#0d130f';
+    ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    ctx.setTransform(this.resolution, 0, 0, this.resolution, this.offsetX * this.dpr, this.offsetY * this.dpr);
+    ctx.drawImage(this.background, 0, 0, this.world.width, this.world.height);
   }
 }
 
@@ -136,7 +161,7 @@ export function drawChalk(ctx, rawPoints, seed, color = R.chalkColor) {
 
 // Draw a finished stroke once onto its own small canvas, so each frame we can
 // just copy that picture instead of redrawing hundreds of chalk strands.
-export function cacheChalk(points, seed, dpr, color) {
+export function cacheChalk(points, seed, resolution, color) {
   const pad = R.chalkWidth * 3 + 4;
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
@@ -145,10 +170,10 @@ export function cacheChalk(points, seed, dpr, color) {
   const w = Math.max(...xs) - x + pad;
   const h = Math.max(...ys) - y + pad;
   const c = document.createElement('canvas');
-  c.width = Math.ceil(w * dpr);
-  c.height = Math.ceil(h * dpr);
+  c.width = Math.ceil(w * resolution);
+  c.height = Math.ceil(h * resolution);
   const ctx = c.getContext('2d');
-  ctx.scale(dpr, dpr);
+  ctx.scale(resolution, resolution);
   ctx.translate(-x, -y);
   drawChalk(ctx, points, seed, color);
   return { canvas: c, x, y, w, h };

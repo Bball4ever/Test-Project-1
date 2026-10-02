@@ -79,16 +79,18 @@ kbd {
 
 #debug-panel {
   position: fixed;
-  top: 10px;
+  bottom: 12px;
   right: 16px;
+  max-height: 60vh;
+  overflow: hidden;
   margin: 0;
   padding: 10px 12px;
   min-width: 230px;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.4);
   border: 1px solid rgba(120, 210, 255, 0.4);
   border-radius: 6px;
   color: rgb(160, 225, 255);
-  font: 12px/1.45 ui-monospace, monospace;
+  font: 11px/1.35 ui-monospace, monospace;
   pointer-events: none;
 }
 
@@ -103,6 +105,65 @@ kbd {
   border-radius: 6px;
   font-size: 14px;
   pointer-events: none;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 10, 7, 0.55);
+  padding: 16px;
+}
+
+.card {
+  max-width: 460px;
+  padding: 24px 28px;
+  background: #1a2620;
+  border: 1px solid rgba(235, 238, 228, 0.25);
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.card h2 {
+  margin: 0 0 10px;
+  font-size: 24px;
+}
+
+.card p {
+  margin: 0 0 18px;
+  line-height: 1.5;
+  font-size: 15px;
+  opacity: 0.9;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.choice:last-child {
+  margin-bottom: 0;
+}
+
+.pick.selected {
+  background: rgba(235, 238, 228, 0.85);
+  color: #14201a;
+}
+
+button.primary {
+  background: rgba(235, 238, 228, 0.9);
+  color: #14201a;
+  font-weight: 600;
+  padding: 10px 22px;
+}
+
+button.primary:hover {
+  background: #fff;
 }
 
 [hidden] {

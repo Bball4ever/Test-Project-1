@@ -7,10 +7,13 @@
 export class HumanController {
   // element: the canvas to listen on
   // onStroke({ owner, pointerType, points }) is called when a stroke is finished
-  constructor(element, { owner = 'player', onStroke }) {
+  // toWorld(clientX, clientY) turns a screen position into a board position
+  constructor(element, { owner = 'left', onStroke, toWorld }) {
     this.element = element;
     this.owner = owner;
     this.onStroke = onStroke;
+    this.toWorld = toWorld;
+    this.enabled = true;
     this.active = new Map(); // pointerId → stroke in progress
 
     element.addEventListener('pointerdown', (e) => this.down(e));
@@ -25,6 +28,7 @@ export class HumanController {
   }
 
   down(e) {
+    if (!this.enabled) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return; // left button only
     e.preventDefault();
     // Keep getting this pointer's events even if it slides off the canvas.
@@ -43,6 +47,11 @@ export class HumanController {
     for (const s of samples.length ? samples : [e]) this.addPoint(stroke, s);
   }
 
+  // Drop any strokes in progress (used when a duel ends or restarts).
+  cancelAll() {
+    this.active.clear();
+  }
+
   up(e) {
     const stroke = this.active.get(e.pointerId);
     if (!stroke) return;
@@ -52,8 +61,8 @@ export class HumanController {
   }
 
   addPoint(stroke, e) {
-    const rect = this.element.getBoundingClientRect();
-    const p = { x: e.clientX - rect.left, y: e.clientY - rect.top, t: e.timeStamp };
+    const { x, y } = this.toWorld(e.clientX, e.clientY);
+    const p = { x, y, t: e.timeStamp };
     const last = stroke.points[stroke.points.length - 1];
     if (last && last.x === p.x && last.y === p.y) return;
     stroke.points.push(p);

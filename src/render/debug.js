@@ -1,70 +1,74 @@
-// Debug overlay (press D): the fitted shapes and the numbers behind every score.
+// Debug overlay (press D): fitted shapes, section health, and the numbers behind scores.
 
 const INK = '120, 210, 255'; // a blue that won't be confused with chalk
 
-// Draw what the recognizer "saw" for one stroke.
-export function drawDebugShapes(ctx, entry, alpha) {
-  const { result } = entry;
+export function drawDuelDebug(ctx, state) {
   ctx.save();
-  ctx.globalAlpha = alpha;
   ctx.strokeStyle = `rgba(${INK}, 0.8)`;
-  ctx.fillStyle = `rgba(${INK}, 0.9)`;
+  ctx.fillStyle = `rgba(${INK}, 0.95)`;
   ctx.lineWidth = 1;
+  ctx.font = '11px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
 
-  // The cleaned-up points.
-  for (const p of result.points) ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
-
-  const shape = result.shape;
-  ctx.setLineDash([5, 5]);
-  if (shape?.kind === 'circle') {
+  for (const ward of state.wards) {
+    const { x, y } = ward.center;
+    ctx.setLineDash([5, 5]);
     ctx.beginPath();
-    ctx.arc(shape.center.x, shape.center.y, shape.radius, 0, Math.PI * 2);
-    ctx.stroke();
-    cross(ctx, shape.center);
-  } else if (shape?.kind === 'segment') {
-    ctx.beginPath();
-    ctx.moveTo(shape.from.x, shape.from.y);
-    ctx.lineTo(shape.to.x, shape.to.y);
-    ctx.stroke();
-  } else if (shape?.kind === 'wave') {
-    ctx.beginPath();
-    ctx.moveTo(shape.start.x, shape.start.y);
-    ctx.lineTo(shape.end.x, shape.end.y);
+    ctx.arc(x, y, ward.radius, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
-    for (const c of shape.crossings) {
+    // Each section's health, printed just outside it.
+    const n = ward.sections.length;
+    ward.sections.forEach((s, k) => {
+      const a = ((k + 0.5) / n) * Math.PI * 2;
+      const r = ward.radius + 34;
+      ctx.fillText(Math.round(s.health), x + Math.cos(a) * r, y + Math.sin(a) * r);
+      // Section boundaries.
+      const b = (k / n) * Math.PI * 2;
       ctx.beginPath();
-      ctx.arc(c.x, c.y, 4, 0, Math.PI * 2);
+      ctx.moveTo(x + Math.cos(b) * (ward.radius - 6), y + Math.sin(b) * (ward.radius - 6));
+      ctx.lineTo(x + Math.cos(b) * (ward.radius + 6), y + Math.sin(b) * (ward.radius + 6));
       ctx.stroke();
-    }
+    });
+  }
+
+  for (const wall of state.walls) {
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(wall.from.x, wall.from.y);
+    ctx.lineTo(wall.to.x, wall.to.y);
+    ctx.stroke();
+  }
+
+  ctx.setLineDash([]);
+  for (const v of state.vigors) {
+    ctx.beginPath();
+    ctx.arc(v.pos.x, v.pos.y, 5, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillText(v.power.toFixed(0), v.pos.x, v.pos.y - 14);
   }
   ctx.restore();
 }
 
-function cross(ctx, p) {
-  ctx.setLineDash([]);
-  ctx.beginPath();
-  ctx.moveTo(p.x - 6, p.y);
-  ctx.lineTo(p.x + 6, p.y);
-  ctx.moveTo(p.x, p.y - 6);
-  ctx.lineTo(p.x, p.y + 6);
-  ctx.stroke();
-}
-
-// Fill the text panel with the latest stroke's details.
-export function debugPanelText(entry) {
-  if (!entry) return 'Debug on. Draw something.';
-  const r = entry.result;
-  const lines = [
+// The text panel: the latest stroke's details, plus a little duel info.
+export function debugPanelText(last, state) {
+  const lines = [];
+  if (state) lines.push(`tick ${state.tick}   vigors in flight ${state.vigors.length}`, '');
+  if (!last) {
+    lines.push('Draw something.');
+    return lines.join('\n');
+  }
+  const r = last.result;
+  lines.push(
     `type      ${r.type}`,
     `quality   ${r.quality.toFixed(3)}`,
     `reason    ${r.reason ?? '-'}`,
     `guess     ${r.guess ?? '-'}`,
-    `device    ${entry.pointerType}`,
-    `raw pts   ${entry.raw.length}`,
-    `clean pts ${r.points.length}`,
+    `device    ${last.pointerType}`,
+    `raw pts   ${last.raw.length}`,
     '',
-  ];
+  );
   for (const [k, v] of Object.entries(r.metrics)) {
     lines.push(`${k.padEnd(18)} ${typeof v === 'number' ? v.toFixed(3) : v}`);
   }

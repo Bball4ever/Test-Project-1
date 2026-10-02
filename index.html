@@ -11,14 +11,41 @@
 
     <header class="hud">
       <h1>Rithmatist Duel</h1>
-      <p>Draw a <b>circle</b> (Warding), a <b>straight line</b> (Forbiddance) or a <b>wave</b> (Vigor).</p>
+      <p id="hint"></p>
     </header>
 
     <nav class="buttons">
       <button id="btn-debug" title="Show the numbers behind each score">Debug <kbd>D</kbd></button>
       <button id="btn-save" title="Copy your last stroke so it can become a test">Save stroke <kbd>S</kbd></button>
-      <button id="btn-clear" title="Wipe the board">Clear <kbd>C</kbd></button>
     </nav>
+
+    <div id="start" class="overlay">
+      <div class="card">
+        <h2>Practice duel</h2>
+        <p>
+          You draw on the <b>left</b> half. Draw a <b>circle</b> first: it's your Line of Warding, and you stand
+          inside it. Then breach the dummy's circle with <b>waves</b> (Lines of Vigor). Straight lines (Lines of
+          Forbiddance) are walls that waves bounce off.
+        </p>
+        <div class="choice">
+          <span>Dummy's circle:</span>
+          <button class="pick selected" data-style="neat">Neat</button>
+          <button class="pick" data-style="sloppy">Sloppy</button>
+        </div>
+        <button id="btn-start" class="primary">Start duel</button>
+      </div>
+    </div>
+
+    <div id="end" class="overlay" hidden>
+      <div class="card">
+        <h2 id="end-title"></h2>
+        <p id="end-stats"></p>
+        <div class="choice">
+          <button id="btn-rematch" class="primary">Rematch</button>
+          <button id="btn-change">Change dummy</button>
+        </div>
+      </div>
+    </div>
 
     <pre id="debug-panel" hidden></pre>
     <div id="toast" hidden></div>
