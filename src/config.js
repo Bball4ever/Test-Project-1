@@ -60,6 +60,10 @@ export const CONFIG = {
       maxSpread: 0.4,
       widthWeight: 0.5,
       heightWeight: 0.5,
+      // Curved or spiky? Each bump's "fill" is its average height ÷ its peak
+      // height: a rounded bump is about 0.64 full, a pointed zigzag about 0.5.
+      // A wave whose bumps are less full than this is spiky.
+      spikyBelow: 0.61,
     },
   },
 
@@ -94,6 +98,13 @@ export const CONFIG = {
     // --- Lines of Vigor ---
     vigorDamage: 40, // × wave quality
     vigorSpeed: 520, // units per second
+    // Curved waves are better against lines (walls and circles); spiky
+    // (zigzag) waves are better against chalklings. Damage × these.
+    vigorStyles: {
+      curved: { walls: 1.4, circles: 1.4, chalklings: 0.6 },
+      spiky: { walls: 0.6, circles: 0.6, chalklings: 1.6 },
+    },
+    maxWalls: 8, // Lines of Forbiddance each duelist can have at once
   },
 
   // --- Lines of Making (chalklings) ---
@@ -168,7 +179,8 @@ export const CONFIG = {
   // Each duelist has this much chalk for the whole duel. Every stroke uses
   // chalk equal to its length (failed strokes too). Out of chalk, out of luck.
   chalk: {
-    supply: 20000,
+    supply: 30000,
+    vigorCost: 0.5, // a Line of Vigor only uses this fraction of its length in chalk
     // If both duelists have less than this left and nothing is moving
     // (no Vigors in flight, no chalklings), the duel is a draw.
     tooLittle: 150,
@@ -224,8 +236,8 @@ export const CONFIG = {
       },
       apprentice: {
         name: 'Apprentice',
-        noise: 6.5, speed: 390, think: [1650, 2800],
-        defendChance: 0.32, counterChance: 0.35, aim: 'random',
+        noise: 5.8, speed: 410, think: [1550, 2600],
+        defendChance: 0.38, counterChance: 0.4, aim: 'random',
         makeChance: 0.13, creature: 'stick', holdRadius: 60,
         defense: 'none', powers: 'random',
       },

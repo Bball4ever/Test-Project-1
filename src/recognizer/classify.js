@@ -181,6 +181,8 @@ function measureWave(points, cfg) {
   const unevenness = cfg.widthWeight * widthSpread + cfg.heightWeight * heightSpread;
   const quality = clamp01(1 - unevenness / cfg.maxSpread);
 
+  const fill = bumps.length ? median(bumps.map((b) => b.fill)) : 0;
+
   const movesForward = backtrackFraction <= cfg.maxBacktrackFraction;
   const tallEnough = amplitude >= cfg.minAmplitude;
 
@@ -195,6 +197,7 @@ function measureWave(points, cfg) {
       end: { x: axis.point.x + u[u.length - 1] * dir.x, y: axis.point.y + u[u.length - 1] * dir.y },
       crossings: crossings.map((i) => points[i]),
       amplitude,
+      style: fill < cfg.spikyBelow ? 'spiky' : 'curved',
     },
     metrics: {
       crossings: crossings.length,
@@ -202,6 +205,7 @@ function measureWave(points, cfg) {
       widthSpread,
       heightSpread,
       backtrackFraction,
+      fill,
     },
   };
 }
@@ -252,7 +256,14 @@ function analyzeAgainst(points, axis, cfg) {
     const b = crossings[k];
     let peak = a;
     for (let i = a; i <= b; i++) if (Math.abs(v[i]) > Math.abs(v[peak])) peak = i;
-    bumps.push({ width: Math.abs(u[b] - u[a]), height: Math.abs(v[peak]), peak });
+    // How full the bump is: its average height ÷ its peak height. A rounded
+    // (curved) bump is about 0.64 full; a pointed (spiky) one about 0.5.
+    // (Measured along the center line, not along the chalk, which has extra
+    // points on the steep parts.)
+    let area = 0;
+    for (let i = a + 1; i <= b; i++) area += (Math.abs(v[i]) + Math.abs(v[i - 1])) / 2 * Math.abs(u[i] - u[i - 1]);
+    const fill = area / ((Math.abs(u[b] - u[a]) || 1) * (Math.abs(v[peak]) || 1));
+    bumps.push({ width: Math.abs(u[b] - u[a]), height: Math.abs(v[peak]), peak, fill });
   }
 
   return { u, v, crossings, bumps, dir };

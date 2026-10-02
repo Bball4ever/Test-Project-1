@@ -10,7 +10,7 @@ import { CONFIG } from '../config.js';
 import { makeRng } from '../random.js';
 import { pathLength, resample } from '../recognizer/clean.js';
 import { hitSegment, hitCircle } from '../engine/collide.js';
-import { mainWard, otherSide } from '../engine/duel.js';
+import { mainWard, otherSide, wallCount } from '../engine/duel.js';
 import { findDefense, layoutDefense } from '../data/defenses.js';
 import { stickFigure, beetle, urchin, turtle, mirror, fitInside } from '../data/creatures.js';
 import { POWERS } from '../engine/powers.js';
@@ -188,7 +188,7 @@ export class BotController {
     }
 
     // 3. Build its defense, a piece at a time.
-    const defense = this.defensePlan(me);
+    const defense = this.defensePlan(state, me);
     if (defense) return defense;
 
     // 4. Attack.
@@ -242,6 +242,7 @@ export class BotController {
 
   // A wall across the Vigor's path, a little before it would hit us.
   wallPlan(state, me, { v, hit }) {
+    if (wallCount(state, this.owner) >= this.cfg.engine.maxWalls) return null;
     const speed = Math.hypot(v.vel.x, v.vel.y);
     const dir = { x: v.vel.x / speed, y: v.vel.y / speed };
     const center = { x: hit.point.x - dir.x * 60, y: hit.point.y - dir.y * 60 };
@@ -266,12 +267,13 @@ export class BotController {
     // Lead the target a little: it's walking toward us.
     const flight = Math.hypot(c.pos.x - tip.x, c.pos.y - tip.y) / this.cfg.engine.vigorSpeed;
     const aim = { x: c.pos.x - away.x * c.speed * flight, y: c.pos.y - away.y * c.speed * flight };
-    return this.wavePlan(tip, norm({ x: aim.x - tip.x, y: aim.y - tip.y }));
+    return this.wavePlan(tip, norm({ x: aim.x - tip.x, y: aim.y - tip.y }), 'spiky');
   }
 
-  defensePlan(me) {
+  defensePlan(state, me) {
     const want = { none: 0, shield: 1, full: 2 }[this.level.defense];
     if (this.defenseDone >= want) return null;
+    if (wallCount(state, this.owner) >= this.cfg.engine.maxWalls) return null;
     const parts = layoutDefense(findDefense('placeholder'), me, this.owner);
     const part = parts[this.defenseDone++];
     if (part.type === 'circle') {
@@ -330,16 +332,22 @@ export class BotController {
   }
 
   // A wave that ends at `tip` and travels along `dir`.
-  wavePlan(tip, dir) {
+  // A wave ending at `tip`, flying along `dir`. Curved waves are for circles
+  // and walls; spiky (zigzag) ones are for chalklings.
+  wavePlan(tip, dir, style = 'curved') {
     const length = 170;
-    const amplitude = 18;
+    const amplitude = style === 'spiky' ? 26 : 18;
     const cycles = 3;
     const n = { x: -dir.y, y: dir.x };
     const points = [];
     for (let i = 0; i <= 80; i++) {
       const f = i / 80;
       const along = -length + f * length;
-      const side = amplitude * Math.sin(f * cycles * 2 * Math.PI);
+      const phase = f * cycles * 2 * Math.PI;
+      // Spiky: narrow points (a zigzag pinched toward the center line).
+      const zig = (2 / Math.PI) * Math.asin(Math.sin(phase));
+      const swing = style === 'spiky' ? Math.sign(zig) * Math.abs(zig) ** 1.6 : Math.sin(phase);
+      const side = amplitude * swing;
       points.push({ x: tip.x + dir.x * along + n.x * side, y: tip.y + dir.y * along + n.y * side });
     }
     if (!points.every((p) => this.onMySide(p))) return null;

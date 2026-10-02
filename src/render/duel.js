@@ -51,7 +51,7 @@ export class DuelRenderer {
           ? e.power
             ? `It comes alive with ${POWER_NAMES[e.power]} ×${e.powerLevel.toFixed(1)}!`
             : 'It comes alive!'
-          : `${thing.main ? 'Main circle' : NAMES[e.kind]} ${Math.round(e.quality * 100)}%`;
+          : `${thing.main ? 'Main circle' : (e.style ? STYLE_NAMES[e.style] + ' ' : '') + NAMES[e.kind]} ${Math.round(e.quality * 100)}%`;
       fx.push({ kind: 'label', text, x: top.x, y: top.y - 10, born: now, life: 2500, color: R.chalkColor });
     } else if (e.type === 'dud') {
       if (!e.points.length) return;
@@ -310,6 +310,9 @@ function dust(point, now, count, speed) {
   });
   return { kind: 'dust', specks, born: now, life: 700 };
 }
+
+// Lines of Vigor: curved (good against lines) or spiky (good against chalklings).
+const STYLE_NAMES = { curved: 'Curved', spiky: 'Spiky' };
 
 const ROLE_NAMES = { attacker: 'Attacker', defender: 'Defender', runner: 'Runner', balanced: 'All-rounder' };
 

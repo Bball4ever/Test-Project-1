@@ -114,7 +114,8 @@ test('a Vigor flies to the enemy circle and damages the section it hits', () => 
   assert.equal(hit.owner, 'right');
   const ward = mainWard(state, 'right');
   assert.equal(hit.section, sectionAt(ward.center, hit.point, E.sections));
-  assert.ok(Math.abs(hit.damage - E.vigorDamage * result.quality) < 1e-9);
+  assert.equal(result.shape.style, 'curved');
+  assert.ok(Math.abs(hit.damage - E.vigorDamage * result.quality * E.vigorStyles.curved.circles) < 1e-9);
   const s = ward.sections[hit.section];
   assert.ok(Math.abs(s.max - s.health - hit.damage) < 1e-9);
   // Only that one section took damage.
@@ -142,7 +143,7 @@ test("a wall stops a Vigor (no bouncing) and takes the damage", () => {
   assert.ok(blocked, 'the wall stopped it');
   assert.equal(events(state, 'hit').length, 0, 'nothing behind the wall was hit');
   assert.equal(state.vigors.length, 0, 'the Vigor is gone, not bounced');
-  assert.ok(Math.abs(wall.max - wall.health - E.vigorDamage * result.quality * E.wallDamageFromVigor) < 1e-9);
+  assert.ok(Math.abs(wall.max - wall.health - E.vigorDamage * result.quality * E.wallDamageFromVigor * E.vigorStyles.curved.walls) < 1e-9);
 });
 
 test('waves can break a wall, and then get through', () => {
@@ -158,6 +159,38 @@ test('waves can break a wall, and then get through', () => {
   addStroke(state, 'left', waveRight(450, 99));
   run(state, 120);
   assert.equal(events(state, 'hit').at(-1).owner, 'right', 'the next wave reaches the circle');
+});
+
+test('curved waves hit circles and walls harder; spiky waves hit chalklings harder', () => {
+  const hitWith = (zigzag, target) => {
+    const state = duelWithCircles();
+    if (target === 'wall') addStroke(state, 'right', S.line({ x1: 900, y1: 300, x2: 900, y2: 600 }));
+    if (target === 'chalkling') {
+      state.chalklings.push({ id: 999, kind: 'chalkling', owner: 'right', pos: { x: 900, y: 450 }, radius: 30, hp: 500, max: 500, mode: 'waiting', strokes: [] });
+    }
+    const { result } = addStroke(state, 'left', S.wave({ x: 450, y: 450, length: 240, amplitude: 25, cycles: 3, zigzag }));
+    assert.equal(result.shape.style, zigzag ? 'spiky' : 'curved');
+    run(state, 120);
+    const e = events(state, target === 'wall' ? 'blocked' : 'hit')[0];
+    assert.ok(e, `hit the ${target}`);
+    return e.damage / result.quality; // so a neater wave doesn't count
+  };
+  assert.ok(hitWith(false, 'circle') > hitWith(true, 'circle') * 2);
+  assert.ok(hitWith(false, 'wall') > hitWith(true, 'wall') * 2);
+  assert.ok(hitWith(true, 'chalkling') > hitWith(false, 'chalkling') * 2);
+});
+
+test('only 8 walls at a time', () => {
+  const state = duelWithCircles();
+  for (let i = 0; i < E.maxWalls; i++) {
+    assert.ok(addStroke(state, 'left', S.line({ x1: 520 + i * 25, y1: 200, x2: 520 + i * 25, y2: 330 })).accepted, `wall ${i + 1}`);
+  }
+  const ninth = addStroke(state, 'left', S.line({ x1: 520, y1: 600, x2: 520, y2: 730 }));
+  assert.equal(ninth.accepted, false);
+  assert.match(ninth.result.reason, /only 8 walls/);
+  // Once one is gone, there's room again.
+  state.walls[0].gone = true;
+  assert.ok(addStroke(state, 'left', S.line({ x1: 520, y1: 600, x2: 520, y2: 730 })).accepted);
 });
 
 test('a Vigor that leaves the board is removed', () => {

@@ -23,12 +23,13 @@ export const ORDERS = ['attack', 'guard'];
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
 // options.chalk: how much chalk each duelist starts with (CONFIG.chalk.supply).
-export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, powerCfg = CONFIG.powers, bindPoints = {}, chalk = CONFIG.chalk.supply } = {}) {
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, powerCfg = CONFIG.powers, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost } = {}) {
   return {
     cfg,
     chalkCfg,
     makeCfg,
     powerCfg,
+    chalkCost: { vigorCost: chalkVigorCost },
     chalk: { left: chalk, right: chalk }, // chalk each duelist has left
     chalkStart: chalk,
     orders: { left: 'attack', right: 'attack' }, // what each side's chalklings do
@@ -64,8 +65,10 @@ export function addStroke(state, owner, rawPoints, { making = false, power = nul
   const cfg = state.cfg;
   const points = rawPoints.map((p) => ({ x: p.x, y: p.y }));
 
-  // Every stroke uses up chalk equal to its length, whether or not it works.
-  const cost = pathLength(points);
+  // Every stroke uses up chalk equal to its length, whether or not it works,
+  // except that Lines of Vigor are cheaper (chalk.vigorCost).
+  const result = making ? null : recognize(points);
+  const cost = pathLength(points) * (result?.type === 'vigor' ? state.chalkCost.vigorCost : 1);
   if (cost > state.chalk[owner]) {
     emit(state, { type: 'dud', owner, reason: 'out of chalk', points });
     return { accepted: false, result: { type: 'dud', reason: 'out of chalk', quality: 0, metrics: { length: cost } } };
@@ -73,8 +76,6 @@ export function addStroke(state, owner, rawPoints, { making = false, power = nul
   state.chalk[owner] -= cost;
 
   if (making) return addMakingStroke(state, owner, points, mainWard(state, owner), power);
-
-  const result = recognize(points);
 
   const reject = (reason) => {
     const dud = { ...result, type: 'dud', reason, guess: result.guess ?? null };
@@ -85,6 +86,10 @@ export function addStroke(state, owner, rawPoints, { making = false, power = nul
   if (!onOwnSide(points, owner, cfg)) return reject('stay on your side');
   if (result.type === 'dud') return reject(result.reason);
   if (result.type !== 'warding' && !mainWard(state, owner)) return reject('draw your circle first');
+
+  if (result.type === 'forbiddance' && wallCount(state, owner) >= cfg.maxWalls) {
+    return reject(`only ${cfg.maxWalls} walls at a time: erase one first`);
+  }
 
   const id = state.nextId++;
   const home = mainWard(state, owner);
@@ -114,6 +119,7 @@ export function addStroke(state, owner, rawPoints, { making = false, power = nul
       id,
       owner,
       quality: result.quality,
+      style: result.shape.style, // 'curved' (good against lines) or 'spiky' (good against chalklings)
       power: cfg.vigorDamage * result.quality,
       pos: { ...end }, // the front tip of the wave
       vel: { x: dir.x * cfg.vigorSpeed, y: dir.y * cfg.vigorSpeed },
@@ -122,7 +128,7 @@ export function addStroke(state, owner, rawPoints, { making = false, power = nul
       points,
     });
   }
-  emit(state, { type: 'placed', owner, kind: result.type, id, quality: result.quality });
+  emit(state, { type: 'placed', owner, kind: result.type, id, quality: result.quality, style: result.shape?.style ?? null });
   return { accepted: true, result, id };
 }
 
@@ -211,7 +217,7 @@ function moveVigor(state, v, dt) {
 
   // Hit a wall: Lines of Vigor don't bounce. The wall stops it and takes the damage.
   if (first.wall) {
-    const damage = v.power * cfg.wallDamageFromVigor;
+    const damage = v.power * cfg.wallDamageFromVigor * styleBonus(cfg, v, 'walls');
     emit(state, { type: 'blocked', id: v.id, wallId: first.wall.id, owner: first.wall.owner, damage, point: first.point });
     damageWall(state, first.wall, damage, first.point);
     return;
@@ -219,14 +225,26 @@ function moveVigor(state, v, dt) {
 
   // Hit a chalkling: hurt it, and the Vigor is spent.
   if (first.chalkling) {
-    emit(state, { type: 'hit', id: v.id, chalklingId: first.chalkling.id, owner: first.chalkling.owner, damage: v.power, point: first.point });
-    damageChalkling(state, first.chalkling, v.power);
+    const damage = v.power * styleBonus(cfg, v, 'chalklings');
+    emit(state, { type: 'hit', id: v.id, chalklingId: first.chalkling.id, owner: first.chalkling.owner, damage, point: first.point });
+    damageChalkling(state, first.chalkling, damage);
     return;
   }
 
   // Hit a circle: damage the section it struck, then the Vigor is spent.
   const ward = first.ward;
   const index = sectionAt(ward.center, first.point, ward.sections.length);
-  emit(state, { type: 'hit', id: v.id, wardId: ward.id, owner: ward.owner, section: index, damage: v.power, point: first.point });
-  damageSection(state, ward, index, v.power, first.point);
+  const damage = v.power * styleBonus(cfg, v, 'circles');
+  emit(state, { type: 'hit', id: v.id, wardId: ward.id, owner: ward.owner, section: index, damage, point: first.point });
+  damageSection(state, ward, index, damage, first.point);
+}
+
+// How many Lines of Forbiddance a duelist has standing right now.
+export function wallCount(state, owner) {
+  return state.walls.filter((w) => w.owner === owner && !w.gone).length;
+}
+
+// Curved waves hit lines harder; spiky waves hit chalklings harder.
+function styleBonus(cfg, v, target) {
+  return cfg.vigorStyles[v.style]?.[target] ?? 1;
 }

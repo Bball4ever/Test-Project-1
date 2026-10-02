@@ -24,10 +24,10 @@ test('a stroke uses chalk equal to its length, even if it fails', () => {
 });
 
 test("you can't draw with chalk you don't have", () => {
-  const state = createDuel({ chalk: 1000 });
+  const state = createDuel({ chalk: 850 });
   addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: 110, noise: 1 })); // about 700
   const left = state.chalk.left;
-  const wave = S.wave({ x: 500, y: 450, length: 250, amplitude: 25 }); // about 400
+  const wave = S.wave({ x: 500, y: 450, length: 250, amplitude: 25 }); // about 400 long, so 200 chalk
   const r = addStroke(state, 'left', wave);
   assert.equal(r.accepted, false);
   assert.equal(r.result.reason, 'out of chalk');
@@ -39,11 +39,22 @@ test('spamming runs out: endless waves stop working', () => {
   const state = createDuel();
   addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: 110, noise: 1 }));
   const wave = (i) => S.wave({ x: 500, y: 450, length: 200, amplitude: 20, seed: i + 1 });
-  const most = Math.ceil(CONFIG.chalk.supply / pathLength(wave(0))) + 5;
+  const most = Math.ceil(CONFIG.chalk.supply / (pathLength(wave(0)) * CONFIG.chalk.vigorCost)) + 5;
   let accepted = 0;
   for (let i = 0; i < most * 2; i++) if (addStroke(state, 'left', wave(i)).accepted) accepted++;
   assert.ok(accepted <= most, `only so many waves fit in the supply (got ${accepted}, limit about ${most})`);
   assert.ok(state.chalk.left < CONFIG.chalk.tooLittle + 400, 'the chalk is used up');
+});
+
+test('a Line of Vigor costs less chalk than its length; other lines cost their full length', () => {
+  const state = createDuel({ chalk: 5000 });
+  const circle = S.circle({ cx: 350, cy: 450, r: 110, noise: 1 });
+  addStroke(state, 'left', circle);
+  assert.ok(Math.abs(5000 - state.chalk.left - pathLength(circle)) < 1e-6);
+  const before = state.chalk.left;
+  const wave = S.wave({ x: 500, y: 450, length: 250, amplitude: 25 });
+  assert.ok(addStroke(state, 'left', wave).accepted);
+  assert.ok(Math.abs(before - state.chalk.left - pathLength(wave) * CONFIG.chalk.vigorCost) < 1e-6);
 });
 
 test('if both sides are out of chalk and nothing is moving, the duel is a draw', () => {

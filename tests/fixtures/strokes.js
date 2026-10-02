@@ -75,6 +75,7 @@ export function wave({
   noise = 0,
   irregular = 0,
   pattern = null, // e.g. [1, 0.3]: sizes for each half-bump, repeating
+  zigzag = false, // true: straight lines between sharp points (a jagged wave)
   seed = 1,
   steps = 200,
 } = {}) {
@@ -90,7 +91,8 @@ export function wave({
     const f = i / steps;
     const phase = f * cycles * 2 * Math.PI;
     const half = Math.min(halves - 1, Math.floor(phase / Math.PI));
-    pts.push({ x: x + f * length, y: y + amplitude * ampScale[half] * Math.sin(phase) + w() });
+    const swing = zigzag ? (2 / Math.PI) * Math.asin(Math.sin(phase)) : Math.sin(phase);
+    pts.push({ x: x + f * length, y: y + amplitude * ampScale[half] * swing + w() });
   }
   return rotate(pts, angle, x, y);
 }

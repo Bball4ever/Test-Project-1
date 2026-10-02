@@ -53,34 +53,38 @@ test('professor beats duelist more often than not', () => {
 
 test('bots play by the same rules: strokes, erasing and orders only, on their own side', () => {
   const actions = { left: new Set(), right: new Set() };
-  const state = createDuel();
-  const bots = {
-    left: new BotController({ owner: 'left', level: 'duelist', seed: 3 }),
-    right: new BotController({ owner: 'right', level: 'professor', seed: 4 }),
-  };
   const events = [];
   const results = [];
-  for (let i = 0; i < 60 * 120 && !state.winner; i++) {
-    for (const side of ['left', 'right']) {
-      bots[side].update(state, (action) => {
-        actions[side].add(action.type);
-        const r = applyAction(state, side, action);
-        results.push(r.result);
-        return r;
-      });
+  // A few duels, so there's time for some chalklings to be made.
+  for (let seed = 3; seed < 9; seed++) {
+    const state = createDuel();
+    const bots = {
+      left: new BotController({ owner: 'left', level: 'duelist', seed }),
+      right: new BotController({ owner: 'right', level: 'professor', seed: seed + 1 }),
+    };
+    for (let i = 0; i < 60 * 120 && !state.winner; i++) {
+      for (const side of ['left', 'right']) {
+        bots[side].update(state, (action) => {
+          actions[side].add(action.type);
+          const r = applyAction(state, side, action);
+          results.push(r.result);
+          return r;
+        });
+      }
+      step(state);
+      events.push(...state.events.splice(0).map((e) => ({ ...e, seed })));
     }
-    step(state);
-    events.push(...state.events.splice(0));
   }
   for (const side of ['left', 'right']) {
     for (const type of actions[side]) assert.ok(['stroke', 'erase', 'order'].includes(type), `${side} used ${type}`);
   }
   assert.ok(!results.some((r) => r?.reason === 'stay on your side'));
+  assert.ok(!results.some((r) => /walls at a time/.test(r?.reason ?? '')), 'bots keep to the wall limit');
   // Every chalkling a bot made came out of a holding circle when its chain was rubbed out.
   const born = events.filter((e) => e.type === 'placed' && e.kind === 'chalkling');
   assert.ok(born.length > 0, 'the bots made chalklings the book way');
   for (const e of born) {
-    const erased = events.find((x) => x.type === 'erased' && x.kind === 'chain' && x.owner === e.owner && x.tick === e.tick);
+    const erased = events.find((x) => x.type === 'erased' && x.kind === 'chain' && x.owner === e.owner && x.tick === e.tick && x.seed === e.seed);
     assert.ok(erased, 'released by erasing a chain');
   }
 });

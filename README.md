@@ -22,11 +22,11 @@ npm start       # then open http://localhost:8000 in Chrome
 | Draw | Line | What it does |
 | --- | --- | --- |
 | A circle | **Warding** | Your first circle is your main circle, and you stand in it. It has 24 sections; if any one breaks, you lose. Rounder circles are stronger, and wobbly spots are weak spots. |
-| A straight line | **Forbiddance** | A wall. It stops waves (taking their damage until it breaks), and chalklings can't pass it. |
-| A wave | **Vigor** | Your attack. It flies the way you drew it and damages the first circle or chalkling it hits. Even waves hit harder. |
+| A straight line | **Forbiddance** | A wall. It stops waves (taking their damage until it breaks), and chalklings can't pass it. You can have **8 walls** at a time; erase one to draw another. |
+| A wave | **Vigor** | Your attack. It flies the way you drew it and damages the first circle, wall or chalkling it hits. Even waves hit harder. Draw it **curved** (smooth bumps) to hit circles and walls hard (×1.4, but ×0.6 on chalklings), or **spiky** (sharp zigzag points) to hit chalklings hard (×1.6, but ×0.6 on lines). The label says which one you drew. |
 | A creature in a holding circle | **Making** | A chalkling: your drawing comes alive, walks its path, and chews through lines. See below. |
 
-**Chalk limit:** each duelist has a set amount of chalk for the whole duel (20,000 to start; see the meters at the top). Every stroke uses chalk equal to its length, even if it fails, so spamming runs you dry. If both sides run out and nothing is still moving, the duel is a draw.
+**Chalk limit:** each duelist has a set amount of chalk for the whole duel (30,000 to start; see the meters at the top). Every stroke uses chalk equal to its length, even if it fails, so spamming runs you dry. **Waves are half price**: a Line of Vigor uses half its length. If both sides run out and nothing is still moving, the duel is a draw.
 
 **Bind points:** green ticks on your main circle. A line or small circle that touches your circle at a bind point is **bound** (+50% strength). Touching anywhere else weakens that part of your circle (−25%).
 
@@ -90,6 +90,8 @@ Press **Eraser** (or E), then click one of your own lines. The eraser turns itse
 | 9 | Master | Stops in the middle of a chalkling to block a wave, then carries on; bigger chalklings (stronger powers) |
 | 10 | Grand master | Also attacks while waiting for a chain to erase; biggest chalklings |
 
+Bots throw curved waves at your circle and spiky ones at your chalklings, and keep to the 8-wall limit.
+
 The smart power choice came from testing: in bot-vs-bot duels **Bow** and **Shield** won far more often than the others, and **Wings** and **Whirlwind** actually lost more than having no power. Each level beats the one below it in at least 7 of 12 test duels. All the settings are in `src/config.js` under `bot.levels`.
 - **Same screen:** two people on one touchscreen, each drawing on their own half at the same time.
 - **Online:** one player presses **Create room** and shares the 4-letter code; the other enters it and presses **Join**. For now this works between tabs on the computer running `npm start`.
@@ -115,9 +117,9 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 101 tests covering:
+There are 104 tests covering:
 - the recognizer
-- the duel engine (damage, walls stopping waves, breach)
+- the duel engine (damage, curved vs spiky waves, walls stopping waves, the wall limit, breach)
 - bind points
 - chalklings (including finding their way around lines, and fighting nearby enemies)
 - chalkling powers
