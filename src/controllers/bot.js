@@ -13,6 +13,7 @@ import { hitSegment, hitCircle } from '../engine/collide.js';
 import { mainWard, otherSide } from '../engine/duel.js';
 import { findDefense, layoutDefense } from '../data/defenses.js';
 import { stickFigure, beetle, urchin, turtle, mirror, fitInside } from '../data/creatures.js';
+import { POWERS } from '../engine/powers.js';
 
 const PEN_LIFT_MS = 120; // pause between strokes
 const CREATURES = { stick: stickFigure, beetle, urchin, turtle };
@@ -25,6 +26,7 @@ export class BotController {
     this.cfg = cfg;
     this.rng = makeRng(seed);
     this.plan = null; // what it's drawing right now
+    this.saved = null; // a plan put aside to block a wave (top levels)
     this.waitUntil = 500 + this.thinkTime(); // ms of duel time
     this.handled = new Set(); // ids of things it has already reacted to
     this.defenseDone = 0; // how many parts of its defense it has built
@@ -44,7 +46,14 @@ export class BotController {
   update(state, act) {
     if (state.winner) return null;
     const now = state.timeMs;
-    if (this.plan) return this.continuePlan(state, act, now);
+    if (this.plan) {
+      // Top levels drop what they're drawing to block an incoming wave, then
+      // carry on where they left off.
+      if (this.level.interrupts && !this.saved && state.tick % 6 === 0) this.tryInterrupt(state, now);
+      // The very best also attack while a chain is being erased, instead of waiting.
+      if (this.level.multitask && !this.saved && this.plan.erasing && now - this.plan.startedAt > 300) this.attackWhileErasing(state, now);
+      return this.continuePlan(state, act, now);
+    }
 
     // While "thinking", it still glances at incoming danger every so often.
     if (now >= this.waitUntil || (state.tick % 6 === 0 && this.urgent(state))) {
@@ -78,10 +87,11 @@ export class BotController {
           owner: this.owner,
           seed: plan.seed + plan.index,
           making: !!stepNow.making,
+          power: stepNow.power ?? null,
           points: stroke.slice(0, Math.max(2, Math.ceil(t * stroke.length))),
         };
       } else {
-        act({ type: 'stroke', points: stroke, making: !!stepNow.making });
+        act({ type: 'stroke', points: stroke, making: !!stepNow.making, power: stepNow.power ?? null });
         done = true;
       }
     } else if (stepNow.kind === 'erase') {
@@ -112,8 +122,38 @@ export class BotController {
   }
 
   endPlan(now) {
+    if (this.saved) {
+      // Back to what it was doing before it was interrupted. (An erase keeps
+      // its own clock: the line has been fading the whole time.)
+      this.plan = this.saved;
+      this.saved = null;
+      if (!this.plan.erasing) this.plan.startedAt = now + PEN_LIFT_MS;
+      return;
+    }
     this.plan = null;
     this.waitUntil = now + this.thinkTime();
+  }
+
+  attackWhileErasing(state, now) {
+    const foe = mainWard(state, otherSide(this.owner));
+    const wave = foe && this.vigorPlan(state, foe);
+    const cost = wave?.steps.reduce((sum, s) => sum + pathLength(s.points), 0) ?? Infinity;
+    if (cost > state.chalk[this.owner]) return;
+    this.saved = this.plan;
+    this.plan = { ...wave, index: 0, startedAt: now, seed: Math.floor(this.rng() * 1e6) };
+  }
+
+  tryInterrupt(state, now) {
+    const me = mainWard(state, this.owner);
+    const vigor = me && this.incomingVigor(state, me);
+    if (!vigor) return;
+    this.handled.add(vigor.v.id);
+    if (this.rng() >= this.level.defendChance) return;
+    const wall = this.wallPlan(state, me, vigor);
+    const cost = wall?.steps.reduce((sum, s) => sum + pathLength(s.points), 0) ?? Infinity;
+    if (cost > state.chalk[this.owner]) return;
+    this.saved = this.plan;
+    this.plan = { ...wall, index: 0, startedAt: now + (wall.delayMs ?? 0), seed: Math.floor(this.rng() * 1e6) };
   }
 
   // --- Deciding what to do ---------------------------------------------------
@@ -311,7 +351,7 @@ export class BotController {
   // enemy circle, then erase the chain to set it loose.
   chalklingPlan(state, me, foe) {
     if (state.chains.some((c) => c.owner === this.owner)) return null; // one at a time
-    const r = 60;
+    const r = this.level.holdRadius ?? 60;
     for (const sign of [1, -1]) {
       const angle = me.bindAngles.find((a) => Math.abs(Math.sin(a) - sign) < 0.01);
       if (angle === undefined) continue;
@@ -330,6 +370,7 @@ export class BotController {
       let creature = CREATURES[this.level.creature](0, 0);
       if (this.dirToEnemy < 0) creature = mirror(creature, 0);
       creature = fitInside(creature, center, r * 0.92);
+      const power = this.choosePower(state);
 
       const toEnemy = norm({ x: foe.center.x - center.x, y: foe.center.y - center.y });
       const pathStart = { x: center.x + toEnemy.x * r * 0.92, y: center.y + toEnemy.y * r * 0.92 };
@@ -341,13 +382,31 @@ export class BotController {
           { kind: 'stroke', points: this.shaky(line(bind, end)), making: true },
           { kind: 'stroke', points: this.shaky(ring), making: true },
           { kind: 'check', test: (s) => s.wards.some((w) => w.owner === this.owner && w.holding) },
-          ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true })),
+          ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true, power })),
           { kind: 'stroke', points: this.shaky(line(pathStart, foe.center)), making: true },
           { kind: 'erase', at: chainMid, ms: this.cfg.making.eraseMs + 300 },
         ],
       };
     }
     return null;
+  }
+
+  // Which power to give the next chalkling (null = none).
+  //   random: any power.
+  //   smart:  what works best in bot-vs-bot testing: a healer to back up two
+  //           or more of its own chalklings, otherwise a bow if your
+  //           chalklings are out, otherwise a bow or a shield, taking turns.
+  //   a power's name: always that one.
+  choosePower(state) {
+    const how = this.level.powers ?? 'none';
+    if (POWERS.includes(how)) return how;
+    if (how === 'random') return POWERS[Math.floor(this.rng() * POWERS.length)];
+    if (how !== 'smart') return null;
+    const mine = state.chalklings.filter((c) => !c.gone && c.owner === this.owner);
+    if (mine.length >= 2 && !mine.some((c) => c.power === 'healer')) return 'healer';
+    if (state.chalklings.some((c) => !c.gone && c.owner !== this.owner)) return 'bow';
+    this.madeCount = (this.madeCount ?? 0) + 1;
+    return this.madeCount % 2 ? 'bow' : 'shield';
   }
 
   strokePlan(points) {

@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { createDuel, addStroke, step, mainWard } from '../src/engine/duel.js';
 import { applyAction } from '../src/engine/actions.js';
 import { BotController } from '../src/controllers/bot.js';
+import { CONFIG } from '../src/config.js';
 import * as S from './fixtures/strokes.js';
 
 // Run a duel between two bots. Every action goes through applyAction, exactly
@@ -117,4 +118,58 @@ test('a professor walls off an incoming Vigor', () => {
   }
   assert.ok(state.walls.filter((w) => w.owner === 'right').length > wallsBefore, 'drew a wall');
   assert.ok(state.events.some((e) => e.type === 'blocked'), 'the wall stopped the wave');
+});
+
+// --- Ten levels ----------------------------------------------------------------
+
+const LEVELS = Object.keys(CONFIG.bot.levels);
+
+test('there are ten bot levels, and each one beats the level below it', () => {
+  assert.equal(LEVELS.length, 10);
+  for (let i = 1; i < LEVELS.length; i++) {
+    let won = 0;
+    for (let seed = 1; seed <= 6; seed++) {
+      if (botDuel(LEVELS[i], LEVELS[i - 1], seed).state.winner === 'left') won++;
+      if (botDuel(LEVELS[i - 1], LEVELS[i], seed + 50).state.winner === 'right') won++;
+    }
+    assert.ok(won >= 7, `${LEVELS[i]} won only ${won} of 12 against ${LEVELS[i - 1]}`);
+  }
+});
+
+test('bots from Apprentice up give their chalklings powers; the first two levels never do', () => {
+  const powersOf = (level) => {
+    const seen = new Set();
+    for (let seed = 1; seed <= 6; seed++) {
+      for (const e of botDuel(level, level, seed).placed) if (e.kind === 'chalkling' && e.owner === 'left') seen.add(e.power ?? 'none');
+    }
+    return seen;
+  };
+  for (const level of ['beginner', 'student']) assert.ok([...powersOf(level)].every((p) => p === 'none'), level);
+  const smart = powersOf('grandmaster');
+  assert.ok(!smart.has('none') && smart.size >= 2, [...smart].join(','));
+});
+
+test('a Master stops drawing a chalkling to block a wave, then finishes the chalkling', () => {
+  const state = createDuel();
+  const bot = new BotController({ owner: 'right', level: 'master', seed: 9 });
+  const act = (action) => applyAction(state, 'right', action);
+  addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: 110, noise: 1 }));
+  // Run until it's in the middle of drawing a chalkling's creature.
+  let i = 0;
+  for (; i < 60 * 60; i++) {
+    bot.update(state, act);
+    step(state);
+    if (state.wards.some((w) => w.owner === 'right' && w.holding && w.creature.length)) break;
+  }
+  assert.ok(i < 60 * 60, 'it started a chalkling');
+  const wallsBefore = state.walls.filter((w) => w.owner === 'right').length;
+  const born = state.chalklings.filter((c) => c.owner === 'right').length;
+  const target = mainWard(state, 'right').center;
+  addStroke(state, 'left', S.wave({ x: 120, y: target.y - 40, length: 160, amplitude: 16, angle: 0, seed: 4 }));
+  for (let k = 0; k < 60 * 12; k++) {
+    bot.update(state, act);
+    step(state);
+  }
+  assert.ok(state.walls.filter((w) => w.owner === 'right').length > wallsBefore, 'drew a wall');
+  assert.ok(state.chalklings.filter((c) => c.owner === 'right').length > born, 'and still finished the chalkling');
 });

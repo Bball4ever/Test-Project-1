@@ -64,7 +64,7 @@ While Chalkling mode is on, a row of **Power** buttons appears at the top. Pick 
 | Healer | Heals itself and friends within 150 by 4 L health a second |
 | Whirlwind | Much faster: speed × (1 + 0.3 L) |
 
-Bots don't use powers yet.
+Bots use powers too, from level 3 up (see below).
 
 ## Erasing
 
@@ -73,7 +73,24 @@ Press **Eraser** (or E), then click one of your own lines. The eraser turns itse
 ## Modes
 
 - **Practice dummy:** it draws a neat or sloppy circle and stands still. You can also pick a defense to trace.
-- **Bot:** student, duelist or professor. Bots draw like people do: point by point, with a shaky hand, through the same recognizer.
+- **Bot:** ten levels (below). Bots draw like people do: point by point, with a shaky hand, through the same recognizer.
+
+## Bot levels
+
+| # | Level | What's new at this level |
+| --- | --- | --- |
+| 1 | Beginner | Very shaky and slow, aims anywhere, rarely blocks |
+| 2 | Student | A bit steadier and quicker |
+| 3 | Apprentice | Gives its chalklings a random power |
+| 4 | Senior student | Draws a shield circle; aims at damaged spots; spikier chalklings |
+| 5 | Duelist | Steadier, quicker, blocks more |
+| 6 | Champion | Picks powers smartly: a Healer to back up its chalklings, a Bow against yours, else Bow or Shield |
+| 7 | Tutor | Full defense (shield and a wall); aims at your weakest spot; beetle chalklings |
+| 8 | Professor | Steadier, quicker, blocks almost everything |
+| 9 | Master | Stops in the middle of a chalkling to block a wave, then carries on; bigger chalklings (stronger powers) |
+| 10 | Grand master | Also attacks while waiting for a chain to erase; biggest chalklings |
+
+The smart power choice came from testing: in bot-vs-bot duels **Bow** and **Shield** won far more often than the others, and **Wings** and **Whirlwind** actually lost more than having no power. Each level beats the one below it in at least 7 of 12 test duels. All the settings are in `src/config.js` under `bot.levels`.
 - **Same screen:** two people on one touchscreen, each drawing on their own half at the same time.
 - **Online:** one player presses **Create room** and shares the 4-letter code; the other enters it and presses **Join**. For now this works between tabs on the computer running `npm start`.
 
@@ -98,14 +115,14 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 98 tests covering:
+There are 101 tests covering:
 - the recognizer
 - the duel engine (damage, walls stopping waves, breach)
 - bind points
 - chalklings (including finding their way around lines, and fighting nearby enemies)
 - chalkling powers
 - the chalk limit
-- the bots (including bot-vs-bot ranking)
+- the bots (including all ten levels ranking in order)
 - online play (two real connections, checking both see the same duel)
 
 Real strokes saved with **S** go into `tests/fixtures/recorded.json` and are checked on every run.

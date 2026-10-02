@@ -149,7 +149,7 @@ function showEnd() {
   } else {
     const me = mode === 'online' ? session.mySide : 'left';
     const waves = seats[me].waves;
-    const against = { dummy: `the ${choices.dummy} dummy`, bot: `the ${choices.level} bot`, online: 'your online opponent' }[mode];
+    const against = { dummy: `the ${choices.dummy} dummy`, bot: `the ${CONFIG.bot.levels[choices.level].name} bot`, online: 'your online opponent' }[mode];
     $('end-title').textContent = state.winner === me ? 'Breach! You win.' : 'You were breached.';
     $('end-stats').textContent = `${secs} seconds against ${against}. You threw ${waves} Line${waves === 1 ? '' : 's'} of Vigor.`;
   }
@@ -570,6 +570,15 @@ for (const box of document.querySelectorAll('.side-controls')) {
 }
 
 // Start-screen choices: one button per option, grouped by data-group.
+// Bot levels come from the config, easiest first, numbered 1 to 10.
+Object.entries(CONFIG.bot.levels).forEach(([id, level], i) => {
+  const b = document.createElement('button');
+  b.className = 'pick' + (id === choices.level ? ' selected' : '');
+  b.dataset.group = 'level';
+  b.dataset.value = id;
+  b.textContent = `${i + 1}. ${level.name}`;
+  $('level-choices').append(b);
+});
 for (const d of DEFENSES) {
   const b = document.createElement('button');
   b.className = 'pick';

@@ -193,26 +193,91 @@ export const CONFIG = {
   // think: pause before each decision, in ms [min, max]. The rest is how smart it is.
   bot: {
     homeRadius: 125,
+    // Ten levels, easiest first. What each setting means:
+    //   noise          how shaky its hand is (bigger = wobblier, weaker lines)
+    //   speed          how fast it draws (board units per second)
+    //   think          how long it pauses between moves (ms, from-to)
+    //   defendChance   chance it walls off an incoming Vigor
+    //   counterChance  chance it shoots at an approaching chalkling
+    //   aim            random | damaged | weakest (which part of your circle it aims at)
+    //   makeChance     how often it makes a chalkling instead of attacking
+    //   creature       what it draws: stick | urchin | beetle
+    //   holdRadius     size of its holding circle: bigger creature, more chalk, stronger power
+    //   defense        none | shield | full (bound shield + walls on bind points)
+    //   powers         none | random | smart (picks the power that fits the moment)
+    //   interrupts     drops what it's drawing to block an incoming wave, then carries on
+    //   multitask      attacks while waiting for a chain to be erased
     levels: {
+      beginner: {
+        name: 'Beginner',
+        noise: 11, speed: 260, think: [2400, 3800],
+        defendChance: 0.1, counterChance: 0.1, aim: 'random',
+        makeChance: 0.08, creature: 'stick', holdRadius: 55,
+        defense: 'none', powers: 'none',
+      },
       student: {
+        name: 'Student',
         noise: 8, speed: 330, think: [1900, 3200],
-        defendChance: 0.2, // chance it walls off an incoming Vigor
-        counterChance: 0.2, // chance it shoots at an approaching chalkling
-        aim: 'random', // random | damaged | weakest
-        makeChance: 0.1, creature: 'stick',
-        defense: 'none', // none | shield | full (bound shield + walls on bind points)
+        defendChance: 0.2, counterChance: 0.2, aim: 'random',
+        makeChance: 0.1, creature: 'stick', holdRadius: 60,
+        defense: 'none', powers: 'none',
+      },
+      apprentice: {
+        name: 'Apprentice',
+        noise: 6.5, speed: 390, think: [1650, 2800],
+        defendChance: 0.32, counterChance: 0.35, aim: 'random',
+        makeChance: 0.13, creature: 'stick', holdRadius: 60,
+        defense: 'none', powers: 'random',
+      },
+      senior: {
+        name: 'Senior student',
+        noise: 5, speed: 450, think: [1400, 2400],
+        defendChance: 0.45, counterChance: 0.5, aim: 'damaged',
+        makeChance: 0.16, creature: 'urchin', holdRadius: 60,
+        defense: 'shield', powers: 'random',
       },
       duelist: {
+        name: 'Duelist',
         noise: 4, speed: 500, think: [1200, 2100],
-        defendChance: 0.55, counterChance: 0.6,
-        aim: 'damaged', makeChance: 0.18, creature: 'urchin',
-        defense: 'shield',
+        defendChance: 0.55, counterChance: 0.6, aim: 'damaged',
+        makeChance: 0.18, creature: 'urchin', holdRadius: 60,
+        defense: 'shield', powers: 'random',
+      },
+      champion: {
+        name: 'Champion',
+        noise: 3.2, speed: 560, think: [1050, 1800],
+        defendChance: 0.68, counterChance: 0.7, aim: 'damaged',
+        makeChance: 0.2, creature: 'urchin', holdRadius: 62,
+        defense: 'shield', powers: 'smart',
+      },
+      tutor: {
+        name: 'Tutor',
+        noise: 2.5, speed: 620, think: [900, 1550],
+        defendChance: 0.8, counterChance: 0.8, aim: 'weakest',
+        makeChance: 0.21, creature: 'beetle', holdRadius: 64,
+        defense: 'full', powers: 'smart',
       },
       professor: {
+        name: 'Professor',
         noise: 1.8, speed: 680, think: [750, 1350],
-        defendChance: 0.9, counterChance: 0.9,
-        aim: 'weakest', makeChance: 0.22, creature: 'beetle',
+        defendChance: 0.9, counterChance: 0.9, aim: 'weakest',
+        makeChance: 0.22, creature: 'beetle', holdRadius: 66,
         defense: 'full', // its shield and one wall; the bottom bind point stays free for chains
+        powers: 'smart',
+      },
+      master: {
+        name: 'Master',
+        noise: 1.3, speed: 760, think: [620, 1150],
+        defendChance: 0.95, counterChance: 0.95, aim: 'weakest',
+        makeChance: 0.24, creature: 'beetle', holdRadius: 72,
+        defense: 'full', powers: 'smart', interrupts: true,
+      },
+      grandmaster: {
+        name: 'Grand master',
+        noise: 0.9, speed: 850, think: [500, 950],
+        defendChance: 0.98, counterChance: 0.98, aim: 'weakest',
+        makeChance: 0.26, creature: 'beetle', holdRadius: 80,
+        defense: 'full', powers: 'smart', interrupts: true, multitask: true,
       },
     },
   },
