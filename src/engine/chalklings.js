@@ -18,6 +18,9 @@
 import { pathLength, distance, resample } from '../recognizer/clean.js';
 import { closestOnSegment, sectionAt } from './collide.js';
 import { damageSection, damageWall, damageChalkling, emit, otherSide } from './damage.js';
+import { obstaclesFor, findRoute } from './route.js';
+
+const REPLAN_TICKS = 30; // look for a fresh route twice a second
 
 // --- Measuring a drawing ---------------------------------------------------------
 
@@ -195,7 +198,8 @@ function stepOne(state, c, dt) {
       bite(state, c, target, dt);
       return;
     }
-    walkToward(state, c, target.pos, dt, true);
+    // Hunting: go round lines if possible; if there's no way round, chew through.
+    navigate(state, c, target.pos, dt, { chewAllWalls: true });
     return;
   }
   if (c.mode === 'path') {
@@ -207,7 +211,9 @@ function stepOne(state, c, dt) {
       emit(state, { type: 'pathDone', owner: c.owner, id: c.id });
       return;
     }
-    walkToward(state, c, c.path[c.pathIndex], dt, true);
+    // On a path: walls in the way get chewed (that's the rule), but it walks
+    // around circles instead of getting snagged on them.
+    navigate(state, c, c.path[c.pathIndex], dt, { wallsBlock: false, enemyWardsBlock: false, chewAllWalls: true });
     return;
   }
   if (c.mode === 'return') {
@@ -221,7 +227,7 @@ function stepOne(state, c, dt) {
       return;
     }
     if (defendSelf(state, c, dt)) return;
-    walkToward(state, c, goal, dt, false);
+    navigate(state, c, goal, dt);
     return;
   }
   stepOrder(state, c, dt);
@@ -259,7 +265,29 @@ function stepOrder(state, c, dt) {
     c.action = 'idle';
     return;
   }
-  walkToward(state, c, goal, dt, false);
+  // Heading for the enemy's circle: that circle is the target, not an obstacle.
+  const attacking = !foe && enemyMain && goal === enemyMain.center;
+  navigate(state, c, goal, dt, { ignoreWardId: attacking ? enemyMain.id : null });
+}
+
+// Walk toward `goal` along a route that goes around lines. The route is worked
+// out again every half second (lines appear and break), or if the goal moves.
+// If there's no way round at all, it walks straight and chews what it can.
+function navigate(state, c, goal, dt, { wallsBlock = true, enemyWardsBlock = true, ignoreWardId = null, chewAllWalls = false } = {}) {
+  const goalMoved = !c.routeGoal || distance(goal, c.routeGoal) > 25;
+  if (goalMoved || state.tick - (c.routeAt ?? -Infinity) >= REPLAN_TICKS) {
+    const obstacles = obstaclesFor(state, c, { wallsBlock, enemyWardsBlock, ignoreWardId });
+    c.route = findRoute(state, c.pos, goal, obstacles);
+    c.routeAt = state.tick;
+    c.routeGoal = { x: goal.x, y: goal.y };
+  }
+  let next = goal;
+  if (c.route?.length) {
+    while (c.route.length > 1 && distance(c.pos, c.route[0]) < 6) c.route.shift();
+    // On the last leg, head for where the goal is now (it may have moved).
+    if (c.route.length > 1) next = c.route[0];
+  }
+  walkToward(state, c, next, dt, chewAllWalls);
 }
 
 function touching(state, c, other) {

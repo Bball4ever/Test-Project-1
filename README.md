@@ -38,6 +38,8 @@ Press **Chalkling** (or M) first: while it's on, your strokes are chalkling part
 4. **Path:** draw a line from the circle to where it should go. It follows the path no matter what, chewing through any wall in its way. **End the path on an enemy chalkling** and yours hunts that one until it's dead.
 5. **Release:** turn Chalkling off, turn on the **Eraser** and rub out the chain for 3 seconds in a row. The chalkling breaks out.
 
+Chalklings find their own way: when attacking, guarding, hunting or coming home they walk **around** walls and circles (using A* route-finding), and only chew through an enemy wall if there's no way round. On a drawn path they chew through walls in the way, but still walk around circles.
+
 When a path ends, the chalkling follows the **Attack / Guard** buttons. After a hunt, it walks back to your side and waits (shown with a "?"). To give it a new command: in Chalkling mode, draw a line from a bind point to it (a new chain) and a new path from it, then erase the chain.
 
 **What it's good at depends on what you draw.**
@@ -77,11 +79,11 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 75 tests covering:
+There are 80 tests covering:
 - the recognizer
 - the duel engine (damage, walls stopping waves, breach)
 - bind points
-- chalklings
+- chalklings (including finding their way around lines)
 - the bots (including bot-vs-bot ranking)
 - online play (two real connections, checking both see the same duel)
 
