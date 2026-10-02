@@ -42,6 +42,12 @@ export function drawDuelDebug(ctx, state) {
   }
 
   ctx.setLineDash([]);
+  for (const c of state.chalklings) {
+    ctx.beginPath();
+    ctx.arc(c.pos.x, c.pos.y, c.radius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillText(`${Math.round(c.hp)}hp bite ${c.bite.toFixed(1)} ${c.order} ${c.action}`, c.pos.x, c.pos.y + c.radius + 12);
+  }
   for (const v of state.vigors) {
     ctx.beginPath();
     ctx.arc(v.pos.x, v.pos.y, 5, 0, Math.PI * 2);
@@ -54,7 +60,7 @@ export function drawDuelDebug(ctx, state) {
 // The text panel: the latest stroke's details, plus a little duel info.
 export function debugPanelText(last, state) {
   const lines = [];
-  if (state) lines.push(`tick ${state.tick}   vigors in flight ${state.vigors.length}`, '');
+  if (state) lines.push(`tick ${state.tick}   vigors ${state.vigors.length}   chalklings ${state.chalklings.length}`, '');
   if (!last) {
     lines.push('Draw something.');
     return lines.join('\n');
@@ -62,14 +68,16 @@ export function debugPanelText(last, state) {
   const r = last.result;
   lines.push(
     `type      ${r.type}`,
-    `quality   ${r.quality.toFixed(3)}`,
+    `quality   ${(r.quality ?? 0).toFixed(3)}`,
     `reason    ${r.reason ?? '-'}`,
     `guess     ${r.guess ?? '-'}`,
+    ...(r.detail !== undefined ? [`detail    ${r.detail.toFixed(2)}`] : []),
     `device    ${last.pointerType}`,
     `raw pts   ${last.raw.length}`,
     '',
   );
-  for (const [k, v] of Object.entries(r.metrics)) {
+  for (const [k, v] of Object.entries(r.metrics ?? {})) {
+    if (typeof v === 'object') continue;
     lines.push(`${k.padEnd(18)} ${typeof v === 'number' ? v.toFixed(3) : v}`);
   }
   return lines.join('\n');

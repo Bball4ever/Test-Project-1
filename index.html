@@ -19,13 +19,28 @@
       <button id="btn-save" title="Copy your last stroke so it can become a test">Save stroke <kbd>S</kbd></button>
     </nav>
 
+    <div class="side-controls" data-side="left" hidden>
+      <button data-act="making" title="Draw chalklings instead of lines">Making <kbd>M</kbd></button>
+      <span class="orders">
+        <button data-act="attack" title="Chalklings march on the enemy circle">Attack <kbd>A</kbd></button>
+        <button data-act="guard" title="Chalklings defend your circle">Guard <kbd>G</kbd></button>
+      </span>
+    </div>
+    <div class="side-controls" data-side="right" hidden>
+      <button data-act="making" title="Draw chalklings instead of lines">Making</button>
+      <span class="orders">
+        <button data-act="attack" title="Chalklings march on the enemy circle">Attack</button>
+        <button data-act="guard" title="Chalklings defend your circle">Guard</button>
+      </span>
+    </div>
+
     <div id="start" class="overlay">
       <div class="card">
         <h2>Practice duel</h2>
         <p>
-          You draw on the <b>left</b> half. Draw a <b>circle</b> first: it's your Line of Warding, and you stand
-          inside it. Then breach the dummy's circle with <b>waves</b> (Lines of Vigor). Straight lines (Lines of
-          Forbiddance) are walls that waves bounce off.
+          Draw a <b>circle</b> first: it's your Line of Warding, and you stand inside it. Breach the other circle
+          with <b>waves</b> (Lines of Vigor). <b>Straight lines</b> (Lines of Forbiddance) are walls. In
+          <b>Making</b> mode you draw chalklings: creatures that walk over and chew through lines.
         </p>
         <div class="choice">
           <span>Dummy's circle:</span>

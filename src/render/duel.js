@@ -4,7 +4,7 @@
 // the engine: they're just decoration, and the duel plays out the same without them.
 
 import { CONFIG } from '../config.js';
-import { drawChalk, cacheChalk } from './board.js';
+import { drawChalk, cacheChalk, cacheChalkStrokes } from './board.js';
 import { NAMES } from './feedback.js';
 
 const R = CONFIG.render;
@@ -23,14 +23,16 @@ export class DuelRenderer {
   }
 
   // Pre-draw a line's chalk once; redraw only if the screen was resized.
-  cached(key, points, seed, color = R.chalkColor) {
+  cached(key, points, seed, color = R.chalkColor, strokes = null) {
     if (this.version !== this.board.version) {
       this.caches.clear();
       this.version = this.board.version;
     }
     let c = this.caches.get(key);
     if (!c) {
-      c = cacheChalk(points, seed, this.board.resolution, color);
+      c = strokes
+        ? cacheChalkStrokes(strokes, seed, this.board.resolution, color)
+        : cacheChalk(points, seed, this.board.resolution, color);
       this.caches.set(key, c);
     }
     return c;
@@ -40,14 +42,20 @@ export class DuelRenderer {
   handleEvent(e, state, now) {
     const fx = this.effects;
     if (e.type === 'placed') {
-      const thing = [...state.wards, ...state.walls, ...state.vigors].find((t) => t.id === e.id);
+      const thing = [...state.wards, ...state.walls, ...state.vigors, ...state.chalklings].find((t) => t.id === e.id);
       if (!thing) return;
-      const top = topOf(thing.points);
-      const name = thing.main ? 'Main circle' : NAMES[e.kind];
-      fx.push({ kind: 'label', text: `${name} ${Math.round(e.quality * 100)}%`, x: top.x, y: top.y - 10, born: now, life: 2500, color: R.chalkColor });
+      const top = topOf(thing.points ?? thing.strokes.flat());
+      const text =
+        e.kind === 'chalkling'
+          ? `Chalkling: ${Math.round(thing.hp)} health, bite ${thing.bite.toFixed(0)}`
+          : `${thing.main ? 'Main circle' : NAMES[e.kind]} ${Math.round(e.quality * 100)}%`;
+      fx.push({ kind: 'label', text, x: top.x, y: top.y - 10, born: now, life: 2500, color: R.chalkColor });
     } else if (e.type === 'dud') {
+      if (!e.points.length) return;
       const top = topOf(e.points);
-      const cache = cacheChalk(e.points, e.tick * 31 + 7, this.board.resolution, R.dudColor);
+      const cache = e.strokes
+        ? cacheChalkStrokes(e.strokes, e.tick * 31 + 7, this.board.resolution, R.dudColor)
+        : cacheChalk(e.points, e.tick * 31 + 7, this.board.resolution, R.dudColor);
       fx.push({ kind: 'dud', cache, born: now, life: R.dudFadeMs });
       fx.push({ kind: 'label', text: e.reason, x: top.x, y: top.y - 10, born: now, life: R.dudFadeMs, color: R.dudColor });
     } else if (e.type === 'attach') {
@@ -59,6 +67,10 @@ export class DuelRenderer {
       fx.push({ kind: 'label', text: `-${Math.round(e.damage)}`, x: e.point.x, y: e.point.y - 14, rise: 30, born: now, life: 1100, color: R.dudColor });
     } else if (e.type === 'bounce' || e.type === 'fizzle') {
       fx.push(dust(e.point, now, 8, 40));
+    } else if (e.type === 'chalklingDied') {
+      fx.push(dust(e.point, now, 28, 90));
+    } else if (e.type === 'wallBroken') {
+      fx.push(dust(e.point, now, 24, 80));
     } else if (e.type === 'shieldBroken') {
       fx.push(dust(e.point, now, 30, 110));
     } else if (e.type === 'breach') {
@@ -69,7 +81,8 @@ export class DuelRenderer {
   }
 
   // template: optional { parts, done, anchor, showMain } from a practice defense.
-  draw(state, liveStrokes, now, template = null) {
+  // drafts: chalklings still being drawn in Making mode (lists of strokes).
+  draw(state, liveStrokes, now, template = null, drafts = []) {
     const ctx = this.board.ctx;
     if (template) drawTemplate(ctx, template);
 
@@ -101,9 +114,55 @@ export class DuelRenderer {
       ctx.restore();
     }
 
-    for (const live of liveStrokes) drawChalk(ctx, live.points, live.seed);
+    for (const c of state.chalklings) this.drawChalkling(ctx, c, now);
+
+    for (const draft of drafts) draft.forEach((stroke, i) => drawChalk(ctx, stroke, 900 + i, R.makingColor));
+    for (const live of liveStrokes) drawChalk(ctx, live.points, live.seed, live.making ? R.makingColor : R.chalkColor);
 
     this.drawEffects(ctx, now);
+  }
+
+  // A chalkling is its own drawing, moved to where it is now, with a little
+  // animation: bobbing as it walks, shaking as it chews or fights.
+  drawChalkling(ctx, c, now) {
+    const pic = this.cached(`c${c.id}`, null, c.id * 7919, R.chalkColor, c.strokes);
+    const phase = now / 90 + c.id;
+    let dx = 0;
+    let dy = 0;
+    let tilt = 0;
+    if (c.action === 'walk') {
+      dy = -Math.abs(Math.sin(phase)) * 4;
+      tilt = Math.sin(phase) * 0.05;
+    } else if (c.action === 'chew' || c.action === 'fight') {
+      dx = Math.sin(phase * 3) * 2.5 * c.facing;
+      tilt = Math.sin(phase * 3) * 0.06;
+    } else {
+      dy = Math.sin(now / 400 + c.id) * 1.2;
+    }
+
+    ctx.save();
+    // Team shadow underneath.
+    ctx.fillStyle = `rgba(${R.teamColors[c.owner]}, 0.18)`;
+    ctx.beginPath();
+    ctx.ellipse(c.pos.x, c.pos.y + c.radius * 0.8, c.radius, c.radius * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.translate(c.pos.x + dx, c.pos.y + dy);
+    ctx.rotate(tilt);
+    ctx.translate(-c.origin.x, -c.origin.y);
+    ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h);
+    ctx.restore();
+
+    if (c.hp < c.max) {
+      const w = Math.max(30, c.radius * 1.4);
+      const x = c.pos.x - w / 2;
+      const y = c.pos.y - c.radius - 14;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(x, y, w, 4);
+      ctx.fillStyle = `rgba(${R.teamColors[c.owner]}, 0.9)`;
+      ctx.fillRect(x, y, (w * c.hp) / c.max, 4);
+      ctx.restore();
+    }
   }
 
   // Rub out damaged sections: draw the bare board back over them,

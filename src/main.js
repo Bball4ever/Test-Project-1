@@ -1,10 +1,15 @@
 // Wires the pieces together:
-//   controllers (you, the dummy) → engine (rules) → renderer (pictures).
+//   controllers (you, the dummy, a bot...) → engine (rules) → renderer (pictures).
+//
+// Each side of the board is a "seat". A seat is filled by a human (using the
+// pointer), the practice dummy, or a bot. The engine doesn't know or care which.
 
 import { CONFIG } from './config.js';
-import { createDuel, addStroke, step, mainWard } from './engine/duel.js';
+import { createDuel, step, mainWard, SIDES } from './engine/duel.js';
+import { applyAction } from './engine/actions.js';
 import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
+import { MakingDraft } from './controllers/making.js';
 import { Board } from './render/board.js';
 import { DuelRenderer } from './render/duel.js';
 import { drawDuelDebug, debugPanelText } from './render/debug.js';
@@ -15,50 +20,80 @@ const canvas = $('board');
 const board = new Board(canvas);
 const renderer = new DuelRenderer(board);
 
-let state = null; // the engine's duel state (null before the first Start)
-let dummy = null;
-let dummyLive = null; // the part of its circle the dummy has drawn so far
 // Choices from the start screen.
-const choices = { dummy: 'neat', bind: '4', template: '' };
+const choices = { mode: 'dummy', dummy: 'neat', bind: '4', template: '' };
 // Where the practice template sits until you draw your own main circle.
 const TEMPLATE_HOME = { center: { x: 380, y: 450 }, radius: 140 };
+
+let session = null; // { state, seats: { left, right } } while a duel is on
 let lastStroke = null; // for the debug panel and "Save stroke"
-let wavesThrown = 0;
 let endShown = false;
 let debug = false;
 
+function makeSeat(kind, controller = null) {
+  return { kind, controller, live: null, making: false, draft: new MakingDraft(), waves: 0 };
+}
+
+// --- Input ---------------------------------------------------------------------
+
 const human = new HumanController(canvas, {
-  owner: 'left',
   toWorld: (x, y) => board.toWorld(x, y),
+  // Which side does a new stroke belong to? The human's side, or on a shared
+  // screen, whichever half the stroke starts in.
+  owner(point) {
+    if (!session || session.state.winner) return null;
+    const humans = SIDES.filter((s) => session.seats[s].kind === 'human');
+    if (humans.length === 1) return humans[0];
+    return point.x < CONFIG.engine.world.width / 2 ? 'left' : 'right';
+  },
   onStroke(stroke) {
-    if (!state || state.winner) return;
-    const { accepted, result } = addStroke(state, 'left', stroke.points);
-    if (!result) return;
-    lastStroke = { result, pointerType: stroke.pointerType, raw: stroke.points };
-    if (accepted && result.type === 'vigor') wavesThrown++;
+    if (!session || session.state.winner) return;
+    const seat = session.seats[stroke.owner];
+    if (seat.making) {
+      seat.draft.add(stroke.points, performance.now());
+      return;
+    }
+    const { accepted, result } = act(stroke.owner, { type: 'stroke', points: stroke.points });
+    if (result) lastStroke = { result, pointerType: stroke.pointerType, raw: stroke.points };
+    if (accepted && result.type === 'vigor') seat.waves++;
   },
 });
 
+// Every action, from any seat, goes through here.
+function act(side, action) {
+  return applyAction(session.state, side, action);
+}
+
+// --- Starting and ending ---------------------------------------------------------
+
 function startDuel() {
-  state = createDuel({ bindPoints: { left: Number(choices.bind) } });
-  dummy = new DummyController({ owner: 'right', style: choices.dummy });
-  dummyLive = null;
+  const state = createDuel({ bindPoints: { left: Number(choices.bind) } });
+  session = {
+    state,
+    seats: {
+      left: makeSeat('human'),
+      right: makeSeat('dummy', new DummyController({ owner: 'right', style: choices.dummy })),
+    },
+  };
   renderer.reset();
   human.cancelAll();
-  wavesThrown = 0;
   endShown = false;
   lastStroke = null;
   accumulator = 0;
+  breachAt = null;
   $('start').hidden = true;
   $('end').hidden = true;
+  updateControls();
 }
 
 function showEnd() {
   endShown = true;
+  const { state, seats } = session;
   const won = state.winner === 'left';
   $('end-title').textContent = won ? 'Breach! You win.' : 'You were breached.';
   const secs = (state.timeMs / 1000).toFixed(1);
-  $('end-stats').textContent = `${secs} seconds, ${wavesThrown} Line${wavesThrown === 1 ? '' : 's'} of Vigor thrown. Dummy's circle: ${choices.dummy}.`;
+  const waves = seats.left.waves;
+  $('end-stats').textContent = `${secs} seconds, ${waves} Line${waves === 1 ? '' : 's'} of Vigor thrown. Dummy's circle: ${choices.dummy}.`;
   $('end').hidden = false;
 }
 
@@ -75,13 +110,18 @@ function frame(now) {
   const elapsed = Math.min(250, now - lastTime); // after a pause, don't try to catch up forever
   lastTime = now;
 
-  if (state) {
+  if (session) {
+    const { state, seats } = session;
     accumulator += elapsed;
     while (accumulator >= CONFIG.engine.stepMs) {
-      dummyLive = dummy.update(state);
+      for (const side of SIDES) {
+        const seat = seats[side];
+        if (seat.controller) seat.live = seat.controller.update(state, (action) => act(side, action));
+      }
       step(state);
       accumulator -= CONFIG.engine.stepMs;
     }
+    releaseFinishedChalklings(now);
     for (const e of state.events.splice(0)) {
       renderer.handleEvent(e, state, now);
       if (e.type === 'breach') breachAt = now;
@@ -90,48 +130,113 @@ function frame(now) {
   }
 
   board.beginFrame();
-  if (state) {
-    const live = human.liveStrokes();
-    if (dummyLive) live.push(dummyLive);
-    renderer.draw(state, live, now, practiceTemplate());
+  if (session) {
+    const { state, seats } = session;
+    const live = human.liveStrokes().map((s) => ({ ...s, making: seats[s.owner].making }));
+    const drafts = [];
+    for (const side of SIDES) {
+      if (seats[side].live) live.push(seats[side].live);
+      if (seats[side].draft.strokes.length) drafts.push(seats[side].draft.strokes);
+    }
+    renderer.draw(state, live, now, practiceTemplate(), drafts);
     if (debug) drawDuelDebug(board.ctx, state);
   }
   updateHud();
   requestAnimationFrame(frame);
 }
 
+// In Making mode, a creature comes alive once its artist pauses.
+function releaseFinishedChalklings(now) {
+  for (const side of SIDES) {
+    const seat = session.seats[side];
+    if (seat.kind !== 'human') continue;
+    const drawing = human.liveStrokes().some((s) => s.owner === side);
+    const strokes = seat.draft.takeIfIdle(now, drawing);
+    if (strokes) releaseChalkling(side, strokes);
+  }
+}
+
+function releaseChalkling(side, strokes) {
+  const { result } = act(side, { type: 'chalkling', strokes });
+  if (result) lastStroke = { result, pointerType: 'making', raw: strokes.flat() };
+}
+
+// --- Making mode and orders ------------------------------------------------------
+
+function toggleMaking(side) {
+  if (!session) return;
+  const seat = session.seats[side];
+  if (seat?.kind !== 'human') return;
+  seat.making = !seat.making;
+  if (!seat.making) {
+    const strokes = seat.draft.take();
+    if (strokes) releaseChalkling(side, strokes);
+  }
+  updateControls();
+}
+
+function giveOrder(side, order) {
+  if (!session || session.seats[side]?.kind !== 'human') return;
+  act(side, { type: 'order', order });
+  updateControls();
+}
+
+// The human's side for keyboard shortcuts (on a shared screen, the left player).
+function keyboardSide() {
+  return session && SIDES.find((s) => session.seats[s].kind === 'human');
+}
+
+function updateControls() {
+  for (const box of document.querySelectorAll('.side-controls')) {
+    const side = box.dataset.side;
+    const seat = session?.seats[side];
+    box.hidden = !seat || seat.kind !== 'human';
+    if (box.hidden) continue;
+    box.querySelector('[data-act="making"]').classList.toggle('selected', seat.making);
+    for (const order of ['attack', 'guard']) {
+      box.querySelector(`[data-act="${order}"]`).classList.toggle('selected', session.state.orders[side] === order);
+    }
+  }
+}
+
+// --- Practice template -----------------------------------------------------------
+
 // The faint defense to trace, placed around your real circle once you've drawn it.
 function practiceTemplate() {
   const defense = choices.template && findDefense(choices.template);
-  if (!defense?.parts) return null;
+  if (!defense?.parts || session.seats.left.kind !== 'human') return null;
+  const { state } = session;
   const main = mainWard(state, 'left');
   const anchor = main ? { center: main.center, radius: main.radius } : TEMPLATE_HOME;
   const parts = layoutDefense(defense, anchor, 'left');
   return { parts, anchor, showMain: !main, done: tracedParts(parts, state.wards, state.walls, anchor.radius) };
 }
 
+// --- Heads-up display --------------------------------------------------------------
+
 function updateHud() {
-  let hint = 'Choose a dummy and press Start.';
-  if (state?.winner) hint = 'The duel is over.';
-  else if (state) {
-    const template = practiceTemplate();
-    const main = mainWard(state, 'left');
-    if (template && main) {
-      const n = template.done.filter(Boolean).length;
-      hint =
-        n < template.parts.length
-          ? `Trace the faint ${findDefense(choices.template).name}: ${n} of ${template.parts.length} parts done. Bind points are the green ticks.`
-          : 'Defense complete! Now attack with waves.';
-    } else if (template) {
-      hint = 'Trace the faint circle first: it becomes your main circle.';
-    } else {
-      hint = main
-        ? 'Attack with waves (Vigor). Straight lines (Forbiddance) make walls. Touch your circle at a green bind point for +50%.'
-        : 'Draw your main circle on the left half.';
-    }
-  }
+  let hint = 'Choose your duel and press Start.';
+  if (session?.state.winner) hint = 'The duel is over.';
+  else if (session) hint = duelHint();
   if ($('hint').textContent !== hint) $('hint').textContent = hint;
-  if (debug) $('debug-panel').textContent = debugPanelText(lastStroke, state);
+  if (debug) $('debug-panel').textContent = debugPanelText(lastStroke, session?.state);
+}
+
+function duelHint() {
+  const { state, seats } = session;
+  const side = keyboardSide();
+  if (seats[side].making) return 'Making mode: draw a creature. It comes alive when you pause. More detail = stronger.';
+  const template = practiceTemplate();
+  const main = mainWard(state, side);
+  if (template && main) {
+    const n = template.done.filter(Boolean).length;
+    return n < template.parts.length
+      ? `Trace the faint ${findDefense(choices.template).name}: ${n} of ${template.parts.length} parts done. Bind points are the green ticks.`
+      : 'Defense complete! Now attack.';
+  }
+  if (template) return 'Trace the faint circle first: it becomes your main circle.';
+  if (!main) return `Draw your main circle on the ${side} half.`;
+  return 'Waves attack, straight lines make walls, Making mode (M) draws chalklings. Green ticks are bind points.';
 }
 
 // --- Keys and buttons ----------------------------------------------------------
@@ -170,10 +275,14 @@ function showToast(text) {
 }
 
 window.addEventListener('keydown', (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'INPUT') return;
   const key = e.key.toLowerCase();
+  const side = keyboardSide();
   if (key === 'd') toggleDebug();
   else if (key === 's') saveStroke();
+  else if (key === 'm') toggleMaking(side);
+  else if (key === 'a') giveOrder(side, 'attack');
+  else if (key === 'g') giveOrder(side, 'guard');
 });
 $('btn-debug').addEventListener('click', toggleDebug);
 $('btn-save').addEventListener('click', saveStroke);
@@ -183,6 +292,13 @@ $('btn-change').addEventListener('click', () => {
   $('end').hidden = true;
   $('start').hidden = false;
 });
+for (const box of document.querySelectorAll('.side-controls')) {
+  const side = box.dataset.side;
+  box.querySelector('[data-act="making"]').addEventListener('click', () => toggleMaking(side));
+  box.querySelector('[data-act="attack"]').addEventListener('click', () => giveOrder(side, 'attack'));
+  box.querySelector('[data-act="guard"]').addEventListener('click', () => giveOrder(side, 'guard'));
+}
+
 // Start-screen choices: one button per option, grouped by data-group.
 for (const d of DEFENSES) {
   const b = document.createElement('button');
@@ -205,4 +321,5 @@ for (const pick of document.querySelectorAll('.pick')) {
   });
 }
 
+updateControls();
 requestAnimationFrame(frame);

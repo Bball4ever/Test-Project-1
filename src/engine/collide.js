@@ -52,6 +52,16 @@ export function reflect(vel, a, b) {
   return { x: vel.x - 2 * dot * nx, y: vel.y - 2 * dot * ny };
 }
 
+// The closest point on segment a→b to point p, and how far away it is.
+export function closestOnSegment(p, a, b) {
+  const ex = b.x - a.x;
+  const ey = b.y - a.y;
+  const len2 = ex * ex + ey * ey || EPS;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * ex + (p.y - a.y) * ey) / len2));
+  const point = { x: a.x + t * ex, y: a.y + t * ey };
+  return { point, dist: Math.hypot(p.x - point.x, p.y - point.y) };
+}
+
 // Which numbered section of a circle does a point fall in?
 // Section 0 starts at angle 0 (pointing right) and they go round clockwise on screen.
 export function sectionAt(center, point, count) {

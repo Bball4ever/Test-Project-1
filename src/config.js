@@ -98,6 +98,36 @@ export const CONFIG = {
     minVigorPower: 5, // a Vigor weaker than this fizzles out
   },
 
+  // --- Lines of Making (chalklings) ---
+  chalkling: {
+    idleMs: 1100, // in Making mode, a creature comes alive after you stop drawing this long
+    maxStrokes: 16,
+    minInk: 60, // total chalk (units of line) needed to make anything at all
+    maxSize: 220, // a creature can't be bigger than this across
+    // "Detail" decides how strong a creature is: more chalk, more strokes,
+    // and closed shapes (heads, bodies, eyes) all add to it.
+    detailPerInk: 1 / 150,
+    detailPerStroke: 0.25,
+    detailPerClosedShape: 1,
+    maxDetail: 15,
+    closedGapRatio: 0.15, // a stroke whose ends meet this closely is a closed shape
+    minClosedInk: 12, // ...and is at least this long (so a dot doesn't count)
+    // Stats from detail.
+    baseHealth: 20,
+    healthPerDetail: 10,
+    baseBite: 3, // damage per second when chewing or fighting
+    bitePerDetail: 1,
+    baseSpeed: 100, // units per second; more detail makes it slower
+    slowPerDetail: 0.05,
+    minRadius: 12,
+    maxRadius: 60,
+    // Behaviour.
+    aggroRange: 170, // attackers go after enemy chalklings this close
+    guardRange: 300, // guards defend this far from their own circle
+    guardDistance: 70, // guards stand this far in front of their circle
+    contactPad: 4,
+  },
+
   dummy: {
     center: { x: 1200, y: 450 },
     radius: 150,
@@ -112,6 +142,8 @@ export const CONFIG = {
     chalkColor: '235, 238, 228', // r, g, b
     dudColor: '240, 150, 130',
     boundColor: '150, 220, 170', // bind points and bound lines
+    makingColor: '190, 175, 255', // a chalkling still being drawn
+    teamColors: { left: '150, 220, 170', right: '240, 150, 130' },
     chalkWidth: 4, // px
     chalkStrands: 4, // thin lines layered to make one chalk line
     chalkGrain: 2, // px per chalk texture step (smaller = finer grain, more work)

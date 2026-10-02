@@ -8,6 +8,8 @@ export class HumanController {
   // element: the canvas to listen on
   // onStroke({ owner, pointerType, points }) is called when a stroke is finished
   // toWorld(clientX, clientY) turns a screen position into a board position
+  // owner: a side ('left'/'right'), or a function (point) => side, so that on a
+  //        shared touchscreen each stroke belongs to whichever half it starts in
   constructor(element, { owner = 'left', onStroke, toWorld }) {
     this.element = element;
     this.owner = owner;
@@ -33,7 +35,10 @@ export class HumanController {
     e.preventDefault();
     // Keep getting this pointer's events even if it slides off the canvas.
     this.element.setPointerCapture(e.pointerId);
-    const stroke = { owner: this.owner, pointerType: e.pointerType, seed: Math.floor(e.timeStamp * 1000), points: [] };
+    const start = this.toWorld(e.clientX, e.clientY);
+    const owner = typeof this.owner === 'function' ? this.owner(start) : this.owner;
+    if (!owner) return;
+    const stroke = { owner, pointerType: e.pointerType, seed: Math.floor(e.timeStamp * 1000), points: [] };
     this.active.set(e.pointerId, stroke);
     this.addPoint(stroke, e);
   }

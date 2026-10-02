@@ -10,18 +10,20 @@ import { recognize } from '../recognizer/index.js';
 import { hitSegment, hitCircle, reflect, sectionAt } from './collide.js';
 import { buildSections } from './wards.js';
 import { bindAngles, attach } from './bind.js';
+import { emit, otherSide, damageSection, damageWall, damageChalkling } from './damage.js';
+import { measureCreature, makeChalkling, stepChalklings } from './chalklings.js';
 
+export { otherSide };
 export const SIDES = ['left', 'right'];
-
-export function otherSide(side) {
-  return side === 'left' ? 'right' : 'left';
-}
+export const ORDERS = ['attack', 'guard'];
 
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
-export function createDuel({ cfg = CONFIG.engine, bindPoints = {} } = {}) {
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, bindPoints = {} } = {}) {
   return {
     cfg,
+    chalkCfg,
+    orders: { left: 'attack', right: 'attack' }, // what each side's chalklings do
     bindPoints: {
       left: bindPoints.left ?? cfg.defaultBindPoints,
       right: bindPoints.right ?? cfg.defaultBindPoints,
@@ -32,6 +34,7 @@ export function createDuel({ cfg = CONFIG.engine, bindPoints = {} } = {}) {
     wards: [], // Lines of Warding (circles)
     walls: [], // Lines of Forbiddance
     vigors: [], // Lines of Vigor in flight
+    chalklings: [], // Lines of Making, walking about
     events: [], // things that just happened, for the renderer's effects
     nextId: 1,
   };
@@ -102,6 +105,47 @@ export function addStroke(state, owner, rawPoints) {
   return { accepted: true, result, id };
 }
 
+// A duelist finishes drawing a chalkling (one or more strokes).
+// Returns { accepted, result } like addStroke.
+export function addChalkling(state, owner, rawStrokes) {
+  if (state.winner) return { accepted: false, result: null };
+  const cc = state.chalkCfg;
+  const strokes = rawStrokes
+    .slice(0, cc.maxStrokes)
+    .map((stroke) => stroke.map((p) => ({ x: p.x, y: p.y })))
+    .filter((stroke) => stroke.length >= 2);
+  const all = strokes.flat();
+  const measure = measureCreature(strokes, cc);
+  const quality = measure.detail / cc.maxDetail;
+  const reject = (reason) => {
+    emit(state, { type: 'dud', owner, reason, points: all, strokes });
+    return { accepted: false, result: { type: 'dud', reason, quality, detail: measure.detail, metrics: measure } };
+  };
+
+  const home = mainWard(state, owner);
+  if (!home) return reject('draw your circle first');
+  if (!all.length || !onOwnSide(all, owner, state.cfg)) return reject('stay on your side');
+  if (measure.ink < cc.minInk) return reject('too little chalk to come alive');
+  if (measure.size > cc.maxSize) return reject('creature too big');
+  const id = state.nextId++;
+  const c = makeChalkling(id, owner, strokes, measure, cc, state.orders[owner]);
+  if (Math.hypot(c.pos.x - home.center.x, c.pos.y - home.center.y) < home.radius + c.radius * 0.5) {
+    state.nextId--;
+    return reject('draw it outside your circle');
+  }
+  state.chalklings.push(c);
+  emit(state, { type: 'placed', owner, kind: 'chalkling', id, quality });
+  return { accepted: true, id, result: { type: 'chalkling', reason: null, quality, detail: measure.detail, metrics: measure } };
+}
+
+// Give all of a side's chalklings an order: 'attack' or 'guard'.
+export function setOrder(state, owner, order) {
+  if (!ORDERS.includes(order)) return;
+  state.orders[owner] = order;
+  for (const c of state.chalklings) if (c.owner === owner) c.order = order;
+  emit(state, { type: 'order', owner, order });
+}
+
 function attachTo(state, main, thing) {
   for (const touch of attach(main, thing, state.cfg)) {
     emit(state, { type: 'attach', owner: thing.owner, id: thing.id, ...touch });
@@ -115,10 +159,6 @@ function onOwnSide(points, owner, cfg) {
     : points.every((p) => p.x >= mid - cfg.sideMargin);
 }
 
-function emit(state, event) {
-  state.events.push({ ...event, tick: state.tick });
-}
-
 // Advance the duel by one fixed step.
 export function step(state) {
   const cfg = state.cfg;
@@ -127,8 +167,11 @@ export function step(state) {
   state.timeMs = state.tick * cfg.stepMs;
 
   for (const v of state.vigors) moveVigor(state, v, dt);
+  stepChalklings(state, dt);
   state.vigors = state.vigors.filter((v) => !v.gone);
   state.wards = state.wards.filter((w) => !w.gone);
+  state.walls = state.walls.filter((w) => !w.gone);
+  state.chalklings = state.chalklings.filter((c) => !c.gone);
 }
 
 function moveVigor(state, v, dt) {
@@ -139,13 +182,19 @@ function moveVigor(state, v, dt) {
   // Find the first thing along the path.
   let first = null;
   for (const wall of state.walls) {
+    if (wall.gone) continue;
     const hit = hitSegment(from, to, wall.from, wall.to);
     if (hit && (!first || hit.t < first.t)) first = { ...hit, wall };
   }
   for (const ward of state.wards) {
-    if (ward.owner === v.owner && !v.armed) continue;
+    if (ward.gone || (ward.owner === v.owner && !v.armed)) continue;
     const hit = hitCircle(from, to, ward.center, ward.radius);
     if (hit && (!first || hit.t < first.t)) first = { ...hit, ward };
+  }
+  for (const c of state.chalklings) {
+    if (c.gone || (c.owner === v.owner && !v.armed)) continue;
+    const hit = hitCircle(from, to, c.pos, c.radius);
+    if (hit && (!first || hit.t < first.t)) first = { ...hit, chalkling: c };
   }
 
   if (!first) {
@@ -164,7 +213,7 @@ function moveVigor(state, v, dt) {
     // Step back off the wall a hair so we don't hit it again next step.
     const speed = Math.hypot(v.vel.x, v.vel.y);
     v.pos = { x: first.point.x + (v.vel.x / speed) * 0.5, y: first.point.y + (v.vel.y / speed) * 0.5 };
-    if (cfg.wallDamageFromBounce > 0) wall.health -= v.power * cfg.wallDamageFromBounce;
+    if (cfg.wallDamageFromBounce > 0) damageWall(state, wall, v.power * cfg.wallDamageFromBounce, first.point);
     v.power *= 1 - cfg.bounceLoss;
     v.bounces++;
     v.armed = true;
@@ -176,22 +225,19 @@ function moveVigor(state, v, dt) {
     return;
   }
 
+  v.pos = first.point;
+  v.gone = true;
+
+  // Hit a chalkling: hurt it, and the Vigor is spent.
+  if (first.chalkling) {
+    emit(state, { type: 'hit', id: v.id, chalklingId: first.chalkling.id, owner: first.chalkling.owner, damage: v.power, point: first.point });
+    damageChalkling(state, first.chalkling, v.power);
+    return;
+  }
+
   // Hit a circle: damage the section it struck, then the Vigor is spent.
   const ward = first.ward;
   const index = sectionAt(ward.center, first.point, ward.sections.length);
-  const section = ward.sections[index];
-  section.health = Math.max(0, section.health - v.power);
-  v.pos = first.point;
-  v.gone = true;
   emit(state, { type: 'hit', id: v.id, wardId: ward.id, owner: ward.owner, section: index, damage: v.power, point: first.point });
-
-  if (section.health <= 0) {
-    if (ward.main && !state.winner) {
-      state.winner = otherSide(ward.owner);
-      emit(state, { type: 'breach', owner: ward.owner, wardId: ward.id, section: index, point: first.point });
-    } else if (!ward.main) {
-      ward.gone = true;
-      emit(state, { type: 'shieldBroken', owner: ward.owner, wardId: ward.id, point: first.point });
-    }
-  }
+  damageSection(state, ward, index, v.power, first.point);
 }

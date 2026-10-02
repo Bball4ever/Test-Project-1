@@ -35,15 +35,16 @@ export class DummyController {
     this.done = false;
   }
 
-  // Called every engine step. Returns the part of the stroke drawn so far,
-  // so the renderer can show the dummy drawing.
-  update(state) {
+  // Called every engine step with the duel state and an `act` function for
+  // sending actions. Returns the part of the stroke drawn so far, so the
+  // renderer can show the dummy drawing.
+  update(state, act = (action) => addStroke(state, this.owner, action.points)) {
     if (this.done) return null;
     const t = (state.timeMs - this.cfg.startDelayMs) / this.cfg.drawMs;
     if (t < 0) return null;
     if (t >= 1) {
       this.done = true;
-      addStroke(state, this.owner, this.points);
+      act({ type: 'stroke', points: this.points });
       return null;
     }
     return { owner: this.owner, seed: 4242, points: this.points.slice(0, Math.max(1, Math.floor(t * this.points.length))) };

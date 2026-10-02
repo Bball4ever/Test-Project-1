@@ -159,6 +159,26 @@ export function drawChalk(ctx, rawPoints, seed, color = R.chalkColor) {
   ctx.restore();
 }
 
+// Like cacheChalk, but for a drawing made of several strokes (a chalkling).
+export function cacheChalkStrokes(strokes, seed, resolution, color) {
+  const pad = R.chalkWidth * 3 + 4;
+  const all = strokes.flat();
+  const xs = all.map((p) => p.x);
+  const ys = all.map((p) => p.y);
+  const x = Math.min(...xs) - pad;
+  const y = Math.min(...ys) - pad;
+  const w = Math.max(...xs) - x + pad;
+  const h = Math.max(...ys) - y + pad;
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(w * resolution);
+  c.height = Math.ceil(h * resolution);
+  const ctx = c.getContext('2d');
+  ctx.scale(resolution, resolution);
+  ctx.translate(-x, -y);
+  strokes.forEach((stroke, i) => drawChalk(ctx, stroke, seed + i * 101, color));
+  return { canvas: c, x, y, w, h };
+}
+
 // Draw a finished stroke once onto its own small canvas, so each frame we can
 // just copy that picture instead of redrawing hundreds of chalk strands.
 export function cacheChalk(points, seed, resolution, color) {
