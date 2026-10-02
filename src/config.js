@@ -139,6 +139,31 @@ export const CONFIG = {
     contactPad: 4,
   },
 
+  // --- Chalkling powers ---
+  // Pick a power with the buttons while making a chalkling. The chalk spent on
+  // the creature sets how strong the power is: power level = creature chalk ÷
+  // chalkPerLevel, between minLevel and maxLevel (a quick stick figure is about
+  // ×0.5, a detailed beetle about ×1.4).
+  powers: {
+    chalkPerLevel: 300,
+    minLevel: 0.5,
+    maxLevel: 3,
+    // What each power does at level L.
+    swordBite: 0.5, // bite × (1 + swordBite × L)
+    bowRange: 180, // shoots enemy chalklings within bowRange + bowRangePerLevel × L
+    bowRangePerLevel: 40,
+    bowEveryMs: 1200, // one arrow this often
+    arrowDamage: 8, // × L per arrow
+    shieldBlock: 0.5, // damage taken ÷ (1 + shieldBlock × L)
+    wingSpeed: 0.15, // flies over walls; speed × (1 + wingSpeed × L)
+    crownRange: 120, // friends within crownRange + crownRangePerLevel × L bite harder
+    crownRangePerLevel: 30,
+    crownBite: 0.15, // their bite × (1 + crownBite × L)
+    healRange: 150, // heals itself and friends this close
+    healPerSecond: 4, // × L
+    whirlwindSpeed: 0.3, // speed × (1 + whirlwindSpeed × L)
+  },
+
   // --- The chalk limit ---
   // Each duelist has this much chalk for the whole duel. Every stroke uses
   // chalk equal to its length (failed strokes too). Out of chalk, out of luck.

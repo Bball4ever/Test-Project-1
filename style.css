@@ -105,6 +105,42 @@ kbd {
   border-left: none;
 }
 
+/* Power buttons: shown at the top, under the hint, while Chalkling mode is on
+   (up there they don't cover the part of the board you draw chalklings on). */
+.side-controls .power-picker {
+  position: fixed;
+  top: 64px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  max-width: calc(50vw - 32px);
+}
+
+.side-controls[data-side='left'] .power-picker {
+  left: 16px;
+}
+
+.side-controls[data-side='right'] .power-picker {
+  right: 16px;
+  justify-content: flex-end;
+}
+
+.side-controls .power-picker[hidden] {
+  display: none;
+}
+
+.side-controls .power-picker span {
+  font-size: 13px;
+  opacity: 0.8;
+  margin-right: 2px;
+}
+
+.side-controls .power-picker button {
+  padding: 4px 8px;
+  font-size: 13px;
+}
+
 .side-controls button.selected {
   background: rgba(190, 175, 255, 0.35);
   border-color: rgba(190, 175, 255, 0.8);

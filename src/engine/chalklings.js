@@ -19,6 +19,7 @@ import { pathLength, distance, resample } from '../recognizer/clean.js';
 import { closestOnSegment, sectionAt } from './collide.js';
 import { damageSection, damageWall, damageChalkling, emit, otherSide } from './damage.js';
 import { obstaclesFor, findRoute, pointBlocked } from './route.js';
+import { powerLevel, applyPowerStats, biteOf, usePower, flies } from './powers.js';
 
 const REPLAN_TICKS = 30; // look for a fresh route twice a second
 
@@ -120,12 +121,13 @@ function countCorners(stroke, limit) {
   return count;
 }
 
-export function makeChalkling(id, owner, strokes, measure, cc, order) {
+// power: the power picked while making it (or null); pc: CONFIG.powers.
+export function makeChalkling(id, owner, strokes, measure, cc, order, power = null, pc = null) {
   // A role shifts strength toward one stat: an attacker's bite goes up,
   // a defender's health goes up, a runner's speed goes up.
   const boost = (share) => 1 - cc.roleBoost / 3 + cc.roleBoost * share;
   const health = (cc.baseHealth + cc.healthPerDetail * measure.detail) * boost(measure.shares.bulky);
-  return {
+  const c = {
     id,
     kind: 'chalkling',
     owner,
@@ -147,7 +149,11 @@ export function makeChalkling(id, owner, strokes, measure, cc, order) {
     chainId: null,
     action: 'idle', // walk | chew | fight | idle (for the renderer's animation)
     facing: owner === 'left' ? 1 : -1,
+    power: power && pc ? power : null,
+    powerLevel: power && pc ? powerLevel(measure.ink, pc) : 0,
   };
+  if (c.power) applyPowerStats(c, pc);
+  return c;
 }
 
 // Give a chalkling its command when its chain is erased.
@@ -176,7 +182,9 @@ export function command(state, c, path) {
 
 export function stepChalklings(state, dt) {
   for (const c of state.chalklings) {
-    if (!c.gone && !state.winner) stepOne(state, c, dt);
+    if (c.gone || state.winner) continue;
+    stepOne(state, c, dt);
+    if (c.power) usePower(state, c, dt);
   }
 }
 
@@ -220,7 +228,7 @@ function stepOne(state, c, dt) {
   if (c.mode === 'path') {
     while (c.pathIndex < c.path.length && distance(c.pos, c.path[c.pathIndex]) < mk.waypointReach) c.pathIndex++;
     // Where the path crosses a wall, aim for the first point past it (so it can go around).
-    const walls = { walls: state.walls.filter((w) => !w.gone), wards: [], clearance: c.radius + 2 };
+    const walls = { walls: flies(c) ? [] : state.walls.filter((w) => !w.gone), wards: [], clearance: c.radius + 2 };
     while (c.pathIndex < c.path.length - 1 && pointBlocked(c.path[c.pathIndex], walls)) c.pathIndex++;
     if (c.pathIndex >= c.path.length) {
       c.mode = 'order';
@@ -324,7 +332,7 @@ function touching(state, c, other) {
 function bite(state, c, foe, dt) {
   c.action = 'fight';
   c.facing = Math.sign(foe.pos.x - c.pos.x) || c.facing;
-  damageChalkling(state, foe, c.bite * dt);
+  damageChalkling(state, foe, biteOf(state, c) * dt);
 }
 
 // Fight back against an enemy that's right next to us. Returns true if it did.
@@ -376,7 +384,7 @@ function walkToward(state, c, goal, dt, chewAllWalls) {
 }
 
 function chew(state, c, blocker, dt) {
-  const amount = c.bite * dt;
+  const amount = biteOf(state, c) * dt;
   if (blocker.kind === 'wall') damageWall(state, blocker.thing, amount, blocker.point);
   else {
     const ward = blocker.thing;
@@ -389,7 +397,7 @@ function chew(state, c, blocker, dt) {
 function findBlocker(state, c, next) {
   let best = null;
   for (const wall of state.walls) {
-    if (wall.gone) continue;
+    if (wall.gone || flies(c)) continue; // winged chalklings fly over walls
     const now = closestOnSegment(c.pos, wall.from, wall.to).dist;
     const then = closestOnSegment(next, wall.from, wall.to);
     if (then.dist < c.radius && then.dist < now && (!best || then.dist < best.gap)) {

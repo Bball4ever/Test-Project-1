@@ -50,6 +50,22 @@ When a path ends, the chalkling follows the **Attack / Guard** buttons. After a 
 - **Long, leggy** drawings are **runners**: they're faster.
 - More chalk and detail makes any of them stronger, but slower.
 
+## Chalkling powers
+
+While Chalkling mode is on, a row of **Power** buttons appears at the top. Pick one before you draw the creature (the last part you draw decides, so you can change your mind until then). **The more chalk you spend on the creature, the stronger its power:** power level = creature chalk ÷ 300, from ×0.5 (a quick stick figure) to ×3 (a big detailed drawing). The hint shows the level so far while you draw, and the label above the chalkling shows it after.
+
+| Power | What it does at level L |
+| --- | --- |
+| Sword | Bites harder: bite × (1 + 0.5 L) |
+| Bow | Shoots an arrow every 1.2 s at the nearest enemy chalkling within 180 + 40 L, for 8 L damage |
+| Shield | Takes less damage: damage ÷ (1 + 0.5 L) |
+| Wings | Flies over walls, and speed × (1 + 0.15 L) |
+| Crown | Friends within 120 + 30 L bite × (1 + 0.15 L) |
+| Healer | Heals itself and friends within 150 by 4 L health a second |
+| Whirlwind | Much faster: speed × (1 + 0.3 L) |
+
+Bots don't use powers yet.
+
 ## Erasing
 
 Press **Eraser** (or E), then click one of your own lines. The eraser turns itself off, and **3 seconds later** the line is gone (it fades while you wait, and you can keep drawing). You can erase your walls, chains, paths and small circles, but never your main circle or anything of your opponent's.
@@ -82,11 +98,12 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 88 tests covering:
+There are 98 tests covering:
 - the recognizer
 - the duel engine (damage, walls stopping waves, breach)
 - bind points
 - chalklings (including finding their way around lines, and fighting nearby enemies)
+- chalkling powers
 - the chalk limit
 - the bots (including bot-vs-bot ranking)
 - online play (two real connections, checking both see the same duel)

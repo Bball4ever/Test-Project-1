@@ -1,6 +1,7 @@
 // Everything a duelist can do, as plain data "actions":
 //   { type: 'stroke', points: [{x, y}, ...], making }       draw one line
-//                                   (making: true when Chalkling mode is on)
+//                                   (making: true when Chalkling mode is on;
+//                                    power: the chalkling power picked, or null)
 //   { type: 'erase', at: {x, y} }                            erase the line there (takes 3 s)
 //   { type: 'order', order: 'attack' | 'guard' }             command your chalklings
 //
@@ -12,9 +13,10 @@
 
 import { addStroke, setOrder, ORDERS } from './duel.js';
 import { eraseAction } from './erase.js';
+import { POWERS } from './powers.js';
 
 export function applyAction(state, side, action) {
-  if (action.type === 'stroke') return addStroke(state, side, action.points, { making: !!action.making });
+  if (action.type === 'stroke') return addStroke(state, side, action.points, { making: !!action.making, power: POWERS.includes(action.power) ? action.power : null });
   if (action.type === 'erase') return eraseAction(state, side, action.at);
   if (action.type === 'order') {
     setOrder(state, side, action.order);
@@ -42,7 +44,7 @@ function cleanPoints(raw) {
 export function sanitizeAction(raw) {
   if (raw?.type === 'stroke') {
     const points = cleanPoints(raw.points);
-    return points && { type: 'stroke', points, making: raw.making === true };
+    return points && { type: 'stroke', points, making: raw.making === true, power: POWERS.includes(raw.power) ? raw.power : null };
   }
   if (raw?.type === 'erase') {
     const at = raw.at ? cleanPoints([raw.at])?.[0] : null;

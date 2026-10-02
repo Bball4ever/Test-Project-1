@@ -15,6 +15,8 @@ import { CONFIG } from './config.js';
 import { createDuel, step, mainWard, SIDES } from './engine/duel.js';
 import { applyAction } from './engine/actions.js';
 import { erasableAt } from './engine/erase.js';
+import { POWER_NAMES, powerLevel } from './engine/powers.js';
+import { pathLength } from './recognizer/clean.js';
 import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
 import { BotController } from './controllers/bot.js';
@@ -47,7 +49,7 @@ let paused = false;
 let tryWithoutTouch = false;
 
 function makeSeat(kind, controller = null) {
-  return { kind, controller, live: null, eraser: false, making: false, waves: 0 };
+  return { kind, controller, live: null, eraser: false, making: false, power: null, waves: 0 };
 }
 
 // --- Input ---------------------------------------------------------------------
@@ -81,8 +83,9 @@ const human = new HumanController(canvas, {
     if (!session?.state || stroke.erasing) return;
     if (session.state.winner) return;
     if (session.net) session.net.send({ t: 'live', points: null });
-    const making = session.seats[stroke.owner].making;
-    const { result } = act(stroke.owner, { type: 'stroke', points: stroke.points, making }, stroke.pointerType);
+    const { making, power } = session.seats[stroke.owner];
+    const action = { type: 'stroke', points: stroke.points, making, power: making ? power : null };
+    const { result } = act(stroke.owner, action, stroke.pointerType);
     if (result) lastStroke = { result, pointerType: stroke.pointerType, raw: stroke.points };
   },
 });
@@ -212,7 +215,7 @@ function onNetMessage(msg) {
   } else if (msg.t === 'start' && session?.net) {
     session.cache = new Map();
     session.state = null;
-    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, waves: 0 });
+    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, power: null, waves: 0 });
     beginDuel();
     showToast(`Duel on! You are on the ${session.mySide.toUpperCase()} half.`);
   } else if (msg.t === 'snap' && session?.net) {
@@ -365,6 +368,14 @@ function toggleMaking(side) {
   updateControls();
 }
 
+// The power the next chalkling gets (null = none). Only matters in Chalkling mode.
+function pickPower(side, power) {
+  const seat = session?.state && session.seats[side];
+  if (seat?.kind !== 'human') return;
+  seat.power = power || null;
+  updateControls();
+}
+
 function giveOrder(side, order) {
   if (!session?.state || session.seats[side]?.kind !== 'human') return;
   act(side, { type: 'order', order });
@@ -387,6 +398,8 @@ function updateControls() {
     if (box.hidden) continue;
     box.querySelector('[data-act="eraser"]').classList.toggle('selected', seat.eraser);
     box.querySelector('[data-act="making"]').classList.toggle('selected', seat.making);
+    box.querySelector('.power-picker').hidden = !seat.making;
+    for (const b of box.querySelectorAll('[data-power]')) b.classList.toggle('selected', (b.dataset.power || null) === seat.power);
     for (const order of ['attack', 'guard']) {
       box.querySelector(`[data-act="${order}"]`).classList.toggle('selected', session.state.orders[side] === order);
     }
@@ -454,14 +467,24 @@ function duelHint() {
   return `${where}Waves attack, straight lines make walls. To make a chalkling, press Chalkling (M).`;
 }
 
+// "Sword ×1.4 so far (more chalk, stronger). " for a creature still being drawn.
+function powerSoFar(holding) {
+  if (!holding.power || !holding.creature?.length) return '';
+  const ink = holding.creature.reduce((sum, s) => sum + pathLength(s), 0);
+  return `${POWER_NAMES[holding.power]} ×${powerLevel(ink, CONFIG.powers).toFixed(1)} so far (more chalk, stronger). `;
+}
+
 // Step-by-step help while Chalkling mode is on.
 function makingHint(state, side) {
   const steps = 'Chalkling mode:';
   if (state.chains.some((c) => c.owner === side && !c.holdingId && !c.chalklingId)) return `${steps} 2. Draw a circle on the end of the chain.`;
   const holding = state.wards.find((w) => w.owner === side && w.holding);
-  if (holding && !holding.creature?.length) return `${steps} 3. Draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.`;
+  if (holding && !holding.creature?.length) {
+    return `${steps} 3. Pick a power above if you want one, then draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.`;
+  }
+  const power = holding ? powerSoFar(holding) : '';
   if (holding && !state.paths.some((p) => p.holdingId === holding.id)) {
-    return `${steps} 4. Add detail, or draw a path out of the circle to where it should go (end it on an enemy chalkling to hunt it).`;
+    return `${steps} ${power}4. Add detail, or draw a path out of the circle to where it should go (end it on an enemy chalkling to hunt it).`;
   }
   const held = state.chalklings.find((c) => c.owner === side && c.mode === 'held');
   if (held && !state.paths.some((p) => p.chalklingId === held.id)) return `${steps} Chained! Draw a new path from your chalkling.`;
@@ -541,6 +564,7 @@ for (const box of document.querySelectorAll('.side-controls')) {
   const side = box.dataset.side;
   box.querySelector('[data-act="eraser"]').addEventListener('click', () => toggleEraser(side));
   box.querySelector('[data-act="making"]').addEventListener('click', () => toggleMaking(side));
+  for (const b of box.querySelectorAll('[data-power]')) b.addEventListener('click', () => pickPower(side, b.dataset.power));
   box.querySelector('[data-act="attack"]').addEventListener('click', () => giveOrder(side, 'attack'));
   box.querySelector('[data-act="guard"]').addEventListener('click', () => giveOrder(side, 'guard'));
 }
