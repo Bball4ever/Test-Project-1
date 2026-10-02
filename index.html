@@ -29,8 +29,18 @@
         </p>
         <div class="choice">
           <span>Dummy's circle:</span>
-          <button class="pick selected" data-style="neat">Neat</button>
-          <button class="pick" data-style="sloppy">Sloppy</button>
+          <button class="pick selected" data-group="dummy" data-value="neat">Neat</button>
+          <button class="pick" data-group="dummy" data-value="sloppy">Sloppy</button>
+        </div>
+        <div class="choice">
+          <span>Your bind points:</span>
+          <button class="pick" data-group="bind" data-value="2">2</button>
+          <button class="pick selected" data-group="bind" data-value="4">4</button>
+          <button class="pick" data-group="bind" data-value="6">6</button>
+        </div>
+        <div class="choice wrap" id="template-choices">
+          <span>Trace a defense:</span>
+          <button class="pick selected" data-group="template" data-value="">None</button>
         </div>
         <button id="btn-start" class="primary">Start duel</button>
       </div>

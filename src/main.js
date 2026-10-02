@@ -8,6 +8,7 @@ import { DummyController } from './controllers/dummy.js';
 import { Board } from './render/board.js';
 import { DuelRenderer } from './render/duel.js';
 import { drawDuelDebug, debugPanelText } from './render/debug.js';
+import { DEFENSES, findDefense, layoutDefense, tracedParts } from './data/defenses.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
@@ -17,7 +18,10 @@ const renderer = new DuelRenderer(board);
 let state = null; // the engine's duel state (null before the first Start)
 let dummy = null;
 let dummyLive = null; // the part of its circle the dummy has drawn so far
-let dummyStyle = 'neat';
+// Choices from the start screen.
+const choices = { dummy: 'neat', bind: '4', template: '' };
+// Where the practice template sits until you draw your own main circle.
+const TEMPLATE_HOME = { center: { x: 380, y: 450 }, radius: 140 };
 let lastStroke = null; // for the debug panel and "Save stroke"
 let wavesThrown = 0;
 let endShown = false;
@@ -36,8 +40,8 @@ const human = new HumanController(canvas, {
 });
 
 function startDuel() {
-  state = createDuel();
-  dummy = new DummyController({ owner: 'right', style: dummyStyle });
+  state = createDuel({ bindPoints: { left: Number(choices.bind) } });
+  dummy = new DummyController({ owner: 'right', style: choices.dummy });
   dummyLive = null;
   renderer.reset();
   human.cancelAll();
@@ -54,7 +58,7 @@ function showEnd() {
   const won = state.winner === 'left';
   $('end-title').textContent = won ? 'Breach! You win.' : 'You were breached.';
   const secs = (state.timeMs / 1000).toFixed(1);
-  $('end-stats').textContent = `${secs} seconds, ${wavesThrown} Line${wavesThrown === 1 ? '' : 's'} of Vigor thrown. Dummy's circle: ${dummyStyle}.`;
+  $('end-stats').textContent = `${secs} seconds, ${wavesThrown} Line${wavesThrown === 1 ? '' : 's'} of Vigor thrown. Dummy's circle: ${choices.dummy}.`;
   $('end').hidden = false;
 }
 
@@ -89,20 +93,42 @@ function frame(now) {
   if (state) {
     const live = human.liveStrokes();
     if (dummyLive) live.push(dummyLive);
-    renderer.draw(state, live, now);
+    renderer.draw(state, live, now, practiceTemplate());
     if (debug) drawDuelDebug(board.ctx, state);
   }
   updateHud();
   requestAnimationFrame(frame);
 }
 
+// The faint defense to trace, placed around your real circle once you've drawn it.
+function practiceTemplate() {
+  const defense = choices.template && findDefense(choices.template);
+  if (!defense?.parts) return null;
+  const main = mainWard(state, 'left');
+  const anchor = main ? { center: main.center, radius: main.radius } : TEMPLATE_HOME;
+  const parts = layoutDefense(defense, anchor, 'left');
+  return { parts, anchor, showMain: !main, done: tracedParts(parts, state.wards, state.walls, anchor.radius) };
+}
+
 function updateHud() {
   let hint = 'Choose a dummy and press Start.';
   if (state?.winner) hint = 'The duel is over.';
   else if (state) {
-    hint = mainWard(state, 'left')
-      ? 'Attack with waves (Vigor). Straight lines (Forbiddance) make walls that waves bounce off.'
-      : 'Draw your main circle on the left half.';
+    const template = practiceTemplate();
+    const main = mainWard(state, 'left');
+    if (template && main) {
+      const n = template.done.filter(Boolean).length;
+      hint =
+        n < template.parts.length
+          ? `Trace the faint ${findDefense(choices.template).name}: ${n} of ${template.parts.length} parts done. Bind points are the green ticks.`
+          : 'Defense complete! Now attack with waves.';
+    } else if (template) {
+      hint = 'Trace the faint circle first: it becomes your main circle.';
+    } else {
+      hint = main
+        ? 'Attack with waves (Vigor). Straight lines (Forbiddance) make walls. Touch your circle at a green bind point for +50%.'
+        : 'Draw your main circle on the left half.';
+    }
   }
   if ($('hint').textContent !== hint) $('hint').textContent = hint;
   if (debug) $('debug-panel').textContent = debugPanelText(lastStroke, state);
@@ -157,10 +183,25 @@ $('btn-change').addEventListener('click', () => {
   $('end').hidden = true;
   $('start').hidden = false;
 });
-for (const pick of document.querySelectorAll('[data-style]')) {
+// Start-screen choices: one button per option, grouped by data-group.
+for (const d of DEFENSES) {
+  const b = document.createElement('button');
+  b.className = 'pick';
+  b.dataset.group = 'template';
+  b.dataset.value = d.id;
+  b.textContent = d.parts ? d.name : `${d.name} (needs layout)`;
+  b.title = d.note ?? '';
+  b.disabled = !d.parts;
+  $('template-choices').append(b);
+}
+for (const pick of document.querySelectorAll('.pick')) {
   pick.addEventListener('click', () => {
-    dummyStyle = pick.dataset.style;
-    for (const p of document.querySelectorAll('[data-style]')) p.classList.toggle('selected', p === pick);
+    const group = pick.dataset.group;
+    choices[group] = pick.dataset.value;
+    for (const p of document.querySelectorAll(`.pick[data-group="${group}"]`)) p.classList.toggle('selected', p === pick);
+    // A defense needs a particular circle type.
+    const defense = group === 'template' && findDefense(pick.dataset.value);
+    if (defense?.bindPoints) document.querySelector(`.pick[data-group="bind"][data-value="${defense.bindPoints}"]`).click();
   });
 }
 

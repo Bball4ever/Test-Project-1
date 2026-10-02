@@ -79,6 +79,14 @@ export const CONFIG = {
     wobbleScale: 0.15, // this much local wobble counts as "fully wobbly"
     minSectionFactor: 0.2, // a section never drops below this fraction of its health
 
+    // --- Bind points ---
+    bindPointChoices: [2, 4, 6],
+    defaultBindPoints: 4,
+    touchTolerance: 18, // a line within this many units of the main circle "touches" it
+    bindTolerance: 26, // a touch this close (along the circle) to a bind point is "bound"
+    boundBonus: 0.5, // bound lines and circles get +50% strength
+    offPointPenalty: 0.25, // touching away from a bind point: that section loses 25%
+
     // --- Lines of Forbiddance ---
     wallHealth: 150, // × line quality (only matters once chalklings exist)
     wallDamageFromBounce: 0, // fraction of a Vigor's power a wall loses per bounce
@@ -103,6 +111,7 @@ export const CONFIG = {
     boardColor: '#1d2a23',
     chalkColor: '235, 238, 228', // r, g, b
     dudColor: '240, 150, 130',
+    boundColor: '150, 220, 170', // bind points and bound lines
     chalkWidth: 4, // px
     chalkStrands: 4, // thin lines layered to make one chalk line
     chalkGrain: 2, // px per chalk texture step (smaller = finer grain, more work)

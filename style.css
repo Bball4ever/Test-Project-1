@@ -146,6 +146,15 @@ kbd {
   margin-bottom: 18px;
 }
 
+.choice.wrap {
+  flex-wrap: wrap;
+}
+
+.pick:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .choice:last-child {
   margin-bottom: 0;
 }

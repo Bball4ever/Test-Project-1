@@ -50,6 +50,10 @@ export class DuelRenderer {
       const cache = cacheChalk(e.points, e.tick * 31 + 7, this.board.resolution, R.dudColor);
       fx.push({ kind: 'dud', cache, born: now, life: R.dudFadeMs });
       fx.push({ kind: 'label', text: e.reason, x: top.x, y: top.y - 10, born: now, life: R.dudFadeMs, color: R.dudColor });
+    } else if (e.type === 'attach') {
+      const text = e.bound ? `Bound +${Math.round(CONFIG.engine.boundBonus * 100)}%` : `Off point -${Math.round(CONFIG.engine.offPointPenalty * 100)}%`;
+      fx.push({ kind: 'label', text, x: e.point.x, y: e.point.y + 30, rise: -12, born: now, life: 2200, color: e.bound ? R.boundColor : R.dudColor, size: 15 });
+      fx.push(dust(e.point, now, 6, 30));
     } else if (e.type === 'hit') {
       fx.push(dust(e.point, now, 16, 70));
       fx.push({ kind: 'label', text: `-${Math.round(e.damage)}`, x: e.point.x, y: e.point.y - 14, rise: 30, born: now, life: 1100, color: R.dudColor });
@@ -64,8 +68,10 @@ export class DuelRenderer {
     }
   }
 
-  draw(state, liveStrokes, now) {
+  // template: optional { parts, done, anchor, showMain } from a practice defense.
+  draw(state, liveStrokes, now, template = null) {
     const ctx = this.board.ctx;
+    if (template) drawTemplate(ctx, template);
 
     for (const wall of state.walls) {
       const c = this.cached(wall.id, wall.points, wall.id * 7919);
@@ -76,7 +82,10 @@ export class DuelRenderer {
       const c = this.cached(ward.id, ward.points, ward.id * 7919);
       ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h);
       this.drawDamage(ctx, ward);
-      if (ward.main) drawDuelist(ctx, ward.center);
+      if (ward.main) {
+        drawBindPoints(ctx, ward);
+        drawDuelist(ctx, ward.center);
+      }
     }
 
     for (const v of state.vigors) {
@@ -171,6 +180,52 @@ function dust(point, now, count, speed) {
     return { x: point.x, y: point.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: 1.5 + Math.random() * 2 };
   });
   return { kind: 'dust', specks, born: now, life: 700 };
+}
+
+// Faint tick marks where the bind points are.
+function drawBindPoints(ctx, ward) {
+  if (!ward.bindAngles) return;
+  ctx.save();
+  ctx.strokeStyle = `rgba(${R.boundColor}, 0.55)`;
+  ctx.fillStyle = `rgba(${R.boundColor}, 0.55)`;
+  ctx.lineWidth = 2;
+  for (const a of ward.bindAngles) {
+    const cos = Math.cos(a);
+    const sin = Math.sin(a);
+    ctx.beginPath();
+    ctx.moveTo(ward.center.x + cos * (ward.radius - 9), ward.center.y + sin * (ward.radius - 9));
+    ctx.lineTo(ward.center.x + cos * (ward.radius + 13), ward.center.y + sin * (ward.radius + 13));
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(ward.center.x + cos * (ward.radius + 18), ward.center.y + sin * (ward.radius + 18), 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+// A practice template: faint dashed shapes to trace. Traced parts turn solid.
+function drawTemplate(ctx, { parts, done, anchor, showMain }) {
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.setLineDash([10, 9]);
+  const shape = (p) => {
+    ctx.beginPath();
+    if (p.type === 'circle') ctx.arc(p.center.x, p.center.y, p.radius, 0, Math.PI * 2);
+    else {
+      ctx.moveTo(p.from.x, p.from.y);
+      ctx.lineTo(p.to.x, p.to.y);
+    }
+    ctx.stroke();
+  };
+  if (showMain) {
+    ctx.strokeStyle = `rgba(${R.chalkColor}, 0.2)`;
+    shape({ type: 'circle', center: anchor.center, radius: anchor.radius });
+  }
+  parts.forEach((p, i) => {
+    ctx.strokeStyle = done[i] ? `rgba(${R.boundColor}, 0.35)` : `rgba(${R.chalkColor}, 0.22)`;
+    shape(p);
+  });
+  ctx.restore();
 }
 
 // A little chalk figure standing in the middle of a main circle.
