@@ -128,6 +128,35 @@ export const CONFIG = {
     contactPad: 4,
   },
 
+  // --- The bot (milestone 5) ---
+  // noise: how shaky its hand is. speed: how fast it draws (units per second).
+  // think: pause before each decision, in ms [min, max]. The rest is how smart it is.
+  bot: {
+    homeRadius: 125,
+    levels: {
+      student: {
+        noise: 8, speed: 330, think: [1900, 3200],
+        defendChance: 0.2, // chance it walls off an incoming Vigor
+        counterChance: 0.2, // chance it shoots at an approaching chalkling
+        aim: 'random', // random | damaged | weakest
+        makeChance: 0.1, creature: 'stick',
+        defense: 'none', // none | shield | full (bound shield + walls on bind points)
+      },
+      duelist: {
+        noise: 4, speed: 500, think: [1200, 2100],
+        defendChance: 0.55, counterChance: 0.6,
+        aim: 'damaged', makeChance: 0.18, creature: 'stick',
+        defense: 'shield',
+      },
+      professor: {
+        noise: 1.8, speed: 680, think: [750, 1350],
+        defendChance: 0.9, counterChance: 0.9,
+        aim: 'weakest', makeChance: 0.22, creature: 'beetle',
+        defense: 'full',
+      },
+    },
+  },
+
   dummy: {
     center: { x: 1200, y: 450 },
     radius: 150,

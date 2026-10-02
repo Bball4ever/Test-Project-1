@@ -9,6 +9,7 @@ import { createDuel, step, mainWard, SIDES } from './engine/duel.js';
 import { applyAction } from './engine/actions.js';
 import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
+import { BotController } from './controllers/bot.js';
 import { MakingDraft } from './controllers/making.js';
 import { Board } from './render/board.js';
 import { DuelRenderer } from './render/duel.js';
@@ -21,7 +22,7 @@ const board = new Board(canvas);
 const renderer = new DuelRenderer(board);
 
 // Choices from the start screen.
-const choices = { mode: 'dummy', dummy: 'neat', bind: '4', template: '' };
+const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bind: '4', template: '' };
 // Where the practice template sits until you draw your own main circle.
 const TEMPLATE_HOME = { center: { x: 380, y: 450 }, radius: 140 };
 
@@ -72,7 +73,7 @@ function startDuel() {
     state,
     seats: {
       left: makeSeat('human'),
-      right: makeSeat('dummy', new DummyController({ owner: 'right', style: choices.dummy })),
+      right: opponentSeat(),
     },
   };
   renderer.reset();
@@ -86,6 +87,19 @@ function startDuel() {
   updateControls();
 }
 
+function opponentSeat() {
+  if (choices.mode === 'bot') {
+    const seed = Math.floor(Math.random() * 1e9);
+    return makeSeat('bot', new BotController({ owner: 'right', level: choices.level, seed }));
+  }
+  return makeSeat('dummy', new DummyController({ owner: 'right', style: choices.dummy }));
+}
+
+function opponentName() {
+  if (choices.mode === 'bot') return `the ${choices.level} bot`;
+  return `the ${choices.dummy} dummy`;
+}
+
 function showEnd() {
   endShown = true;
   const { state, seats } = session;
@@ -93,7 +107,7 @@ function showEnd() {
   $('end-title').textContent = won ? 'Breach! You win.' : 'You were breached.';
   const secs = (state.timeMs / 1000).toFixed(1);
   const waves = seats.left.waves;
-  $('end-stats').textContent = `${secs} seconds, ${waves} Line${waves === 1 ? '' : 's'} of Vigor thrown. Dummy's circle: ${choices.dummy}.`;
+  $('end-stats').textContent = `${secs} seconds against ${opponentName()}. You threw ${waves} Line${waves === 1 ? '' : 's'} of Vigor.`;
   $('end').hidden = false;
 }
 
@@ -135,7 +149,9 @@ function frame(now) {
     const live = human.liveStrokes().map((s) => ({ ...s, making: seats[s.owner].making }));
     const drafts = [];
     for (const side of SIDES) {
-      if (seats[side].live) live.push(seats[side].live);
+      const seatLive = seats[side].live;
+      if (seatLive) live.push(seatLive);
+      if (seatLive?.draft?.length) drafts.push(seatLive.draft);
       if (seats[side].draft.strokes.length) drafts.push(seats[side].draft.strokes);
     }
     renderer.draw(state, live, now, practiceTemplate(), drafts);
@@ -310,16 +326,22 @@ for (const d of DEFENSES) {
   b.disabled = !d.parts;
   $('template-choices').append(b);
 }
+// Rows like "Bot level" only show for the opponent they belong to.
+function showChoiceRows() {
+  for (const row of document.querySelectorAll('[data-show]')) row.hidden = !row.dataset.show.split(' ').includes(choices.mode);
+}
 for (const pick of document.querySelectorAll('.pick')) {
   pick.addEventListener('click', () => {
     const group = pick.dataset.group;
     choices[group] = pick.dataset.value;
     for (const p of document.querySelectorAll(`.pick[data-group="${group}"]`)) p.classList.toggle('selected', p === pick);
+    showChoiceRows();
     // A defense needs a particular circle type.
     const defense = group === 'template' && findDefense(pick.dataset.value);
     if (defense?.bindPoints) document.querySelector(`.pick[data-group="bind"][data-value="${defense.bindPoints}"]`).click();
   });
 }
 
+showChoiceRows();
 updateControls();
 requestAnimationFrame(frame);

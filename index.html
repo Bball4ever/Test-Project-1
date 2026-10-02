@@ -36,13 +36,24 @@
 
     <div id="start" class="overlay">
       <div class="card">
-        <h2>Practice duel</h2>
+        <h2>Rithmatist Duel</h2>
         <p>
           Draw a <b>circle</b> first: it's your Line of Warding, and you stand inside it. Breach the other circle
           with <b>waves</b> (Lines of Vigor). <b>Straight lines</b> (Lines of Forbiddance) are walls. In
           <b>Making</b> mode you draw chalklings: creatures that walk over and chew through lines.
         </p>
-        <div class="choice">
+        <div class="choice wrap">
+          <span>Opponent:</span>
+          <button class="pick selected" data-group="mode" data-value="dummy">Practice dummy</button>
+          <button class="pick" data-group="mode" data-value="bot">Bot</button>
+        </div>
+        <div class="choice" data-show="bot">
+          <span>Bot level:</span>
+          <button class="pick" data-group="level" data-value="student">Student</button>
+          <button class="pick selected" data-group="level" data-value="duelist">Duelist</button>
+          <button class="pick" data-group="level" data-value="professor">Professor</button>
+        </div>
+        <div class="choice" data-show="dummy">
           <span>Dummy's circle:</span>
           <button class="pick selected" data-group="dummy" data-value="neat">Neat</button>
           <button class="pick" data-group="dummy" data-value="sloppy">Sloppy</button>
