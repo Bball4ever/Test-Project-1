@@ -206,9 +206,9 @@ export function release(state, chain) {
   }
   // The creature breaks out and the holding circle is gone.
   ward.gone = true;
-  const c = makeChalkling(state.nextId++, ward.owner, strokes, measure, cc, state.orders[ward.owner], state.powerCfg);
+  const c = makeChalkling(state.nextId++, ward.owner, strokes, measure, cc, state.orders[ward.owner]);
   state.chalklings.push(c);
-  emit(state, { type: 'placed', owner: c.owner, kind: 'chalkling', id: c.id, quality: measure.detail / cc.maxDetail, role: c.role, powers: c.powers });
+  emit(state, { type: 'placed', owner: c.owner, kind: 'chalkling', id: c.id, quality: measure.detail / cc.maxDetail, role: c.role });
   command(state, c, path);
 }
 

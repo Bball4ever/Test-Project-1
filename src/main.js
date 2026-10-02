@@ -459,7 +459,7 @@ function makingHint(state, side) {
   const steps = 'Chalkling mode:';
   if (state.chains.some((c) => c.owner === side && !c.holdingId && !c.chalklingId)) return `${steps} 2. Draw a circle on the end of the chain.`;
   const holding = state.wards.find((w) => w.owner === side && w.holding);
-  if (holding && !holding.creature?.length) return `${steps} 3. Draw your chalkling inside the circle: a blob body, plus gear for a power (sword, bow, shield, wings, crown, +, spiral).`;
+  if (holding && !holding.creature?.length) return `${steps} 3. Draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.`;
   if (holding && !state.paths.some((p) => p.holdingId === holding.id)) {
     return `${steps} 4. Add detail, or draw a path out of the circle to where it should go (end it on an enemy chalkling to hunt it).`;
   }

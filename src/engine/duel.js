@@ -23,12 +23,11 @@ export const ORDERS = ['attack', 'guard'];
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
 // options.chalk: how much chalk each duelist starts with (CONFIG.chalk.supply).
-export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, powerCfg = CONFIG.powers, bindPoints = {}, chalk = CONFIG.chalk.supply } = {}) {
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, bindPoints = {}, chalk = CONFIG.chalk.supply } = {}) {
   return {
     cfg,
     chalkCfg,
     makeCfg,
-    powerCfg,
     chalk: { left: chalk, right: chalk }, // chalk each duelist has left
     chalkStart: chalk,
     orders: { left: 'attack', right: 'attack' }, // what each side's chalklings do

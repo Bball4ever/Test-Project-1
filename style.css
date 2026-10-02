@@ -183,36 +183,6 @@ kbd {
   flex-wrap: wrap;
 }
 
-.powers {
-  text-align: left;
-  font-size: 14px;
-  margin: 0 0 16px;
-  padding: 8px 12px;
-  border: 1px solid rgba(235, 238, 228, 0.2);
-  border-radius: 6px;
-}
-
-.powers summary {
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.powers p {
-  margin: 8px 0 4px !important;
-  font-size: 14px !important;
-}
-
-.powers ul {
-  margin: 0;
-  padding-left: 20px;
-  line-height: 1.5;
-}
-
-.card {
-  max-height: calc(100vh - 32px);
-  overflow-y: auto;
-}
-
 .note {
   font-size: 14px !important;
   opacity: 0.85;

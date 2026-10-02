@@ -50,22 +50,6 @@ When a path ends, the chalkling follows the **Attack / Guard** buttons. After a 
 - **Long, leggy** drawings are **runners**: they're faster.
 - More chalk and detail makes any of them stronger, but slower.
 
-## Special powers
-
-Draw a blob for your chalkling's body, then add gear on it or sticking out of it. Each piece of gear gives a power (you can combine them):
-
-| Draw | Power | What it does |
-| --- | --- | --- |
-| A long straight stick | **Sword** | Bites 50% harder |
-| A curved line with a straight line across it | **Bow** | Shoots arrows at enemy chalklings up to 260 away |
-| A small closed shape with a + inside | **Shield** | Takes half damage |
-| A curved line on each side of the body | **Wings** | Flies over walls, 30% faster |
-| A zigzag on top | **Crown** | Nearby friendly chalklings bite 30% harder |
-| A + on the blob | **Healer** | Heals itself and nearby friends |
-| A spiral | **Whirlwind** | 60% faster |
-
-The body has to be a real blob (a closed shape that isn't tiny), so a stick figure's head doesn't count. Each chalkling's label shows its powers.
-
 ## Erasing
 
 Press **Eraser** (or E), then click one of your own lines. The eraser turns itself off, and **3 seconds later** the line is gone (it fades while you wait, and you can keep drawing). You can erase your walls, chains, paths and small circles, but never your main circle or anything of your opponent's.
@@ -98,13 +82,12 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 97 tests covering:
+There are 88 tests covering:
 - the recognizer
 - the duel engine (damage, walls stopping waves, breach)
 - bind points
 - chalklings (including finding their way around lines, and fighting nearby enemies)
 - the chalk limit
-- chalkling powers
 - the bots (including bot-vs-bot ranking)
 - online play (two real connections, checking both see the same duel)
 
