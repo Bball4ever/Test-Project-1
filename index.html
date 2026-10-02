@@ -15,6 +15,7 @@
     </header>
 
     <nav class="buttons">
+      <button id="btn-pause" title="Freeze the duel" hidden>Pause <kbd>P</kbd></button>
       <button id="btn-debug" title="Show the numbers behind each score">Debug <kbd>D</kbd></button>
       <button id="btn-save" title="Copy your last stroke so it can become a test">Save stroke <kbd>S</kbd></button>
     </nav>
@@ -46,6 +47,19 @@
           creature inside the circle, and a path out of it. Turn Chalkling off, press <b>Eraser</b> and click the chain: 3
           seconds later it's gone and the chalkling comes alive.
         </p>
+        <details class="powers">
+          <summary>Special powers for chalklings</summary>
+          <p>Draw a blob for the body, then add gear on it or sticking out of it:</p>
+          <ul>
+            <li><b>Sword</b>: a long straight stick. Bites 50% harder.</li>
+            <li><b>Bow</b>: a curved line with a straight line across it. Shoots arrows at enemy chalklings.</li>
+            <li><b>Shield</b>: a small closed shape with a + inside. Takes half damage.</li>
+            <li><b>Wings</b>: a curved line on each side. Flies over walls, a bit faster.</li>
+            <li><b>Crown</b>: a zigzag on top. Nearby friends bite 30% harder.</li>
+            <li><b>Healer</b>: a + on the blob. Heals itself and nearby friends.</li>
+            <li><b>Whirlwind</b>: a spiral. Moves 60% faster.</li>
+          </ul>
+        </details>
         <div class="choice wrap">
           <span>Opponent:</span>
           <button class="pick selected" data-group="mode" data-value="dummy">Practice dummy</button>
@@ -92,6 +106,17 @@
         <p class="note" id="online-status" data-show="online"></p>
         <div class="choice" data-show="dummy bot local">
           <button id="btn-start" class="primary">Start duel</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="paused" class="overlay" hidden>
+      <div class="card">
+        <h2>Paused</h2>
+        <p>Everything is frozen. Nothing moves until you come back.</p>
+        <div class="choice">
+          <button id="btn-resume" class="primary">Resume <kbd>P</kbd></button>
+          <button id="btn-paused-menu">Main menu</button>
         </div>
       </div>
     </div>

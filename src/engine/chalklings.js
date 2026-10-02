@@ -19,6 +19,8 @@ import { pathLength, distance, resample } from '../recognizer/clean.js';
 import { closestOnSegment, sectionAt } from './collide.js';
 import { damageSection, damageWall, damageChalkling, emit, otherSide } from './damage.js';
 import { obstaclesFor, findRoute, pointBlocked } from './route.js';
+import { polygonArea, countCorners } from './shapes.js';
+import { detectPowers } from './powers.js';
 
 const REPLAN_TICKS = 30; // look for a fresh route twice a second
 
@@ -88,39 +90,9 @@ export function measureCreature(strokes, cc) {
   };
 }
 
-function polygonArea(points) {
-  let a = 0;
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i];
-    const q = points[(i + 1) % points.length];
-    a += p.x * q.y - q.x * p.y;
-  }
-  return Math.abs(a) / 2;
-}
-
-// Sharp bends in a stroke (each bend counted once).
-function countCorners(stroke, limit) {
-  const pts = resample(stroke, 4);
-  let count = 0;
-  let cooldown = 0;
-  for (let i = 3; i < pts.length - 3; i++) {
-    if (cooldown > 0) {
-      cooldown--;
-      continue;
-    }
-    const a1 = Math.atan2(pts[i].y - pts[i - 3].y, pts[i].x - pts[i - 3].x);
-    const a2 = Math.atan2(pts[i + 3].y - pts[i].y, pts[i + 3].x - pts[i].x);
-    let turn = Math.abs(a2 - a1);
-    if (turn > Math.PI) turn = 2 * Math.PI - turn;
-    if (turn > limit) {
-      count++;
-      cooldown = 4;
-    }
-  }
-  return count;
-}
-
-export function makeChalkling(id, owner, strokes, measure, cc, order) {
+export function makeChalkling(id, owner, strokes, measure, cc, order, pc) {
+  const powers = pc ? detectPowers(strokes, cc, pc) : [];
+  const has = (p) => powers.includes(p);
   // A role shifts strength toward one stat: an attacker's bite goes up,
   // a defender's health goes up, a runner's speed goes up.
   const boost = (share) => 1 - cc.roleBoost / 3 + cc.roleBoost * share;
@@ -137,8 +109,14 @@ export function makeChalkling(id, owner, strokes, measure, cc, order) {
     role: measure.role,
     hp: health,
     max: health,
-    bite: (cc.baseBite + cc.bitePerDetail * measure.detail) * boost(measure.shares.spiky),
-    speed: (cc.baseSpeed / (1 + cc.slowPerDetail * measure.detail)) * boost(measure.shares.leggy),
+    bite: (cc.baseBite + cc.bitePerDetail * measure.detail) * boost(measure.shares.spiky) * (has('sword') ? pc.swordBite : 1),
+    speed:
+      (cc.baseSpeed / (1 + cc.slowPerDetail * measure.detail)) *
+      boost(measure.shares.leggy) *
+      (has('wings') ? pc.wingSpeed : 1) *
+      (has('whirlwind') ? pc.spiralSpeed : 1),
+    powers,
+    bowCooldown: 0,
     mode: 'order',
     order,
     path: null,
@@ -176,8 +154,43 @@ export function command(state, c, path) {
 
 export function stepChalklings(state, dt) {
   for (const c of state.chalklings) {
-    if (!c.gone && !state.winner) stepOne(state, c, dt);
+    if (c.gone || state.winner) continue;
+    stepOne(state, c, dt);
+    if (c.powers?.length) usePowers(state, c, dt);
   }
+}
+
+// Powers that act on their own every moment: healing and shooting arrows.
+function usePowers(state, c, dt) {
+  const pc = state.powerCfg;
+  if (c.powers.includes('healer')) {
+    for (const friend of state.chalklings) {
+      if (friend.owner === c.owner && !friend.gone && distance(friend.pos, c.pos) <= pc.healRange) {
+        friend.hp = Math.min(friend.max, friend.hp + pc.healPerSecond * dt);
+      }
+    }
+  }
+  if (c.powers.includes('bow')) {
+    c.bowCooldown -= dt * 1000;
+    if (c.bowCooldown > 0) return;
+    const target = nearest(
+      c.pos,
+      state.chalklings.filter((e) => e.owner !== c.owner && !e.gone && distance(e.pos, c.pos) <= pc.bowRange && !touching(state, c, e)),
+    );
+    if (!target) return;
+    c.bowCooldown = pc.bowEveryMs;
+    emit(state, { type: 'arrow', owner: c.owner, from: { ...c.pos }, to: { ...target.pos } });
+    damageChalkling(state, target, pc.arrowDamage + biteOf(state, c) / 2);
+  }
+}
+
+// A chalkling's bite, including a nearby friend's crown.
+function biteOf(state, c) {
+  const pc = state.powerCfg;
+  const king = state.chalklings.some(
+    (k) => k !== c && k.owner === c.owner && !k.gone && k.powers?.includes('crown') && distance(k.pos, c.pos) <= pc.crownRange,
+  );
+  return c.bite * (king ? pc.crownBite : 1);
 }
 
 function stepOne(state, c, dt) {
@@ -220,7 +233,8 @@ function stepOne(state, c, dt) {
   if (c.mode === 'path') {
     while (c.pathIndex < c.path.length && distance(c.pos, c.path[c.pathIndex]) < mk.waypointReach) c.pathIndex++;
     // Where the path crosses a wall, aim for the first point past it (so it can go around).
-    const walls = { walls: state.walls.filter((w) => !w.gone), wards: [], clearance: c.radius + 2 };
+    const flies = c.powers?.includes('wings');
+    const walls = { walls: flies ? [] : state.walls.filter((w) => !w.gone), wards: [], clearance: c.radius + 2 };
     while (c.pathIndex < c.path.length - 1 && pointBlocked(c.path[c.pathIndex], walls)) c.pathIndex++;
     if (c.pathIndex >= c.path.length) {
       c.mode = 'order';
@@ -324,7 +338,7 @@ function touching(state, c, other) {
 function bite(state, c, foe, dt) {
   c.action = 'fight';
   c.facing = Math.sign(foe.pos.x - c.pos.x) || c.facing;
-  damageChalkling(state, foe, c.bite * dt);
+  damageChalkling(state, foe, biteOf(state, c) * dt);
 }
 
 // Fight back against an enemy that's right next to us. Returns true if it did.
@@ -376,7 +390,7 @@ function walkToward(state, c, goal, dt, chewAllWalls) {
 }
 
 function chew(state, c, blocker, dt) {
-  const amount = c.bite * dt;
+  const amount = biteOf(state, c) * dt;
   if (blocker.kind === 'wall') damageWall(state, blocker.thing, amount, blocker.point);
   else {
     const ward = blocker.thing;
@@ -388,8 +402,9 @@ function chew(state, c, blocker, dt) {
 // line it already overlaps is always allowed, so nothing gets stuck forever.
 function findBlocker(state, c, next) {
   let best = null;
+  const flies = c.powers?.includes('wings'); // winged chalklings fly over walls
   for (const wall of state.walls) {
-    if (wall.gone) continue;
+    if (wall.gone || flies) continue;
     const now = closestOnSegment(c.pos, wall.from, wall.to).dist;
     const then = closestOnSegment(next, wall.from, wall.to);
     if (then.dist < c.radius && then.dist < now && (!best || then.dist < best.gap)) {

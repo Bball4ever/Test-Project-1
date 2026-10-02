@@ -6,6 +6,7 @@
 import { CONFIG } from '../config.js';
 import { drawChalk, cacheChalk, cacheChalkStrokes } from './board.js';
 import { NAMES } from './feedback.js';
+import { POWER_NAMES } from '../engine/powers.js';
 
 const R = CONFIG.render;
 
@@ -47,7 +48,9 @@ export class DuelRenderer {
       const top = topOf(thing.points ?? thing.strokes.flat());
       const text =
         e.kind === 'chalkling'
-          ? 'It comes alive!'
+          ? e.powers?.length
+            ? `It comes alive with ${e.powers.map((p) => POWER_NAMES[p]).join(' + ')}!`
+            : 'It comes alive!'
           : `${thing.main ? 'Main circle' : NAMES[e.kind]} ${Math.round(e.quality * 100)}%`;
       fx.push({ kind: 'label', text, x: top.x, y: top.y - 10, born: now, life: 2500, color: R.chalkColor });
     } else if (e.type === 'dud') {
@@ -89,6 +92,8 @@ export class DuelRenderer {
     } else if (e.type === 'creatureLost') {
       fx.push(dust(e.point, now, 30, 90));
       fx.push(label(e.point, 'Creature lost', now, R.dudColor));
+    } else if (e.type === 'arrow') {
+      fx.push({ kind: 'arrow', from: e.from, to: e.to, born: now, life: 350 });
     } else if (e.type === 'chalklingDied') {
       fx.push(dust(e.point, now, 28, 90));
     } else if (e.type === 'wallBroken') {
@@ -270,6 +275,20 @@ export class DuelRenderer {
         ctx.fillStyle = `rgba(${R.chalkColor}, ${0.7 * (1 - t)})`;
         const secs = (now - f.born) / 1000;
         for (const p of f.specks) ctx.fillRect(p.x + p.vx * secs, p.y + p.vy * secs + 40 * secs * secs, p.size, p.size);
+      } else if (f.kind === 'arrow') {
+        // An arrow streaking from the archer to its target.
+        const head = Math.min(1, t * 2);
+        const tail = Math.max(0, head - 0.35);
+        const at = (k) => ({ x: f.from.x + (f.to.x - f.from.x) * k, y: f.from.y + (f.to.y - f.from.y) * k });
+        const a = at(tail);
+        const b = at(head);
+        ctx.strokeStyle = `rgba(${R.chalkColor}, ${1 - t * 0.6})`;
+        ctx.lineWidth = 2.5;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+        ctx.stroke();
       } else if (f.kind === 'ring') {
         ctx.strokeStyle = `rgba(${R.dudColor}, ${1 - t})`;
         ctx.lineWidth = 4;
@@ -336,10 +355,11 @@ function statusText(c) {
 function drawFacts(ctx, c) {
   const line1 = `${ROLE_NAMES[c.role] ?? 'Chalkling'} · ${statusText(c)}`;
   const line2 = `health ${Math.max(1, Math.round(c.hp))}/${Math.round(c.max)}  bite ${c.bite.toFixed(0)}  speed ${Math.round(c.speed)}`;
+  const line3 = c.powers?.length ? `Powers: ${c.powers.map((p) => POWER_NAMES[p]).join(', ')}` : '';
   ctx.save();
   ctx.font = '600 12px system-ui, sans-serif';
-  const w = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width) + 14;
-  const h = 40;
+  const w = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width, ctx.measureText(line3).width) + 14;
+  const h = line3 ? 56 : 40;
   const x = c.pos.x - w / 2;
   const y = Math.max(4, c.pos.y - c.radius - 12 - h);
   ctx.fillStyle = 'rgba(10, 16, 12, 0.6)';
@@ -356,6 +376,11 @@ function drawFacts(ctx, c) {
   ctx.font = '12px system-ui, sans-serif';
   ctx.fillStyle = `rgba(${R.chalkColor}, 0.85)`;
   ctx.fillText(line2, c.pos.x, y + 24);
+  if (line3) {
+    ctx.font = '600 12px system-ui, sans-serif';
+    ctx.fillStyle = `rgba(${R.boundColor}, 0.95)`;
+    ctx.fillText(line3, c.pos.x, y + 40);
+  }
   // Health bar between the two lines.
   const barW = w - 14;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';

@@ -16,7 +16,8 @@ const MAX_SEARCH = 6000; // give up after looking at this many squares
 //   wallsBlock: walls are obstacles (otherwise it will chew through them)
 //   ignoreWardId: a circle it's heading for (to chew it), so not an obstacle
 export function obstaclesFor(state, c, { wallsBlock = true, ignoreWardId = null, enemyWardsBlock = true } = {}) {
-  const walls = wallsBlock ? state.walls.filter((w) => !w.gone) : [];
+  const flies = c.powers?.includes('wings'); // winged chalklings fly over walls
+  const walls = wallsBlock && !flies ? state.walls.filter((w) => !w.gone) : [];
   const wards = state.wards.filter(
     (w) => !w.gone && w.id !== ignoreWardId && (enemyWardsBlock || w.owner === c.owner),
   );

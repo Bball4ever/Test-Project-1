@@ -139,6 +139,28 @@ export const CONFIG = {
     contactPad: 4,
   },
 
+  // --- Chalkling powers: simple gear drawn on a chalkling's body ---
+  powers: {
+    minBodyRadius: 14, // the "blob" body must be at least this big (so a stick figure's head doesn't count)
+    straightness: 0.92, // straight lines (swords, crosses, bowstrings) must be this straight
+    swordLength: 2, // a sword is at least this many body-radii long
+    arcTurn: [1.2, 4.5], // a curved line (bow, wings) bends this much in total (radians)
+    crownCorners: 3, // a crown is a zigzag with at least this many sharp corners
+    spiralTurn: 3 * Math.PI, // a spiral turns round at least this much (1.5 turns)
+    // What each power does.
+    swordBite: 1.5, // bite × this
+    bowRange: 260, // shoots enemy chalklings this far away
+    bowEveryMs: 1200, // one arrow this often
+    arrowDamage: 10, // + half its bite
+    shieldTaken: 0.5, // takes this fraction of damage
+    wingSpeed: 1.3, // speed × this, and flies over walls
+    crownRange: 170, // friends this close bite harder
+    crownBite: 1.3,
+    healRange: 150, // heals itself and friends this close
+    healPerSecond: 5,
+    spiralSpeed: 1.6, // speed × this
+  },
+
   // --- The chalk limit ---
   // Each duelist has this much chalk for the whole duel. Every stroke uses
   // chalk equal to its length (failed strokes too). Out of chalk, out of luck.

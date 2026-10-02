@@ -43,6 +43,7 @@ let lastStroke = null; // for the debug panel and "Save stroke"
 let lastSentRaw = null; // online: the points of our last stroke, until the server's verdict arrives
 let endShown = false;
 let debug = false;
+let paused = false;
 let tryWithoutTouch = false;
 
 function makeSeat(kind, controller = null) {
@@ -112,6 +113,7 @@ function startLocalDuel() {
 }
 
 function beginDuel() {
+  setPaused(false);
   renderer.reset();
   human.cancelAll();
   endShown = false;
@@ -152,6 +154,7 @@ function showEnd() {
 }
 
 function backToMenu() {
+  setPaused(false);
   closeNet();
   session = null;
   $('end').hidden = true;
@@ -269,7 +272,7 @@ function frame(now) {
   const elapsed = Math.min(250, now - lastTime); // after a pause, don't try to catch up forever
   lastTime = now;
 
-  if (session?.state) {
+  if (session?.state && !paused) {
     const { state, seats } = session;
     if (!session.net) {
       accumulator += elapsed;
@@ -316,6 +319,30 @@ function predicted(state, ms) {
   const dt = Math.min(ms, 100) / 1000;
   if (!dt || state.winner) return state;
   return { ...state, vigors: state.vigors.map((v) => ({ ...v, pos: { x: v.pos.x + v.vel.x * dt, y: v.pos.y + v.vel.y * dt } })) };
+}
+
+// --- Pause ------------------------------------------------------------------------
+// Only for duels running on this computer: online, one player can't freeze the other.
+
+function canPause() {
+  return !!session?.state && !session.net && !session.state.winner;
+}
+
+function setPaused(on) {
+  paused = on;
+  human.enabled = !on;
+  if (on) human.cancelAll();
+  $('paused').hidden = !on;
+  updatePauseButton();
+}
+
+function togglePause() {
+  if (paused) setPaused(false);
+  else if (canPause()) setPaused(true);
+}
+
+function updatePauseButton() {
+  $('btn-pause').hidden = !canPause();
 }
 
 // --- Eraser and orders ----------------------------------------------------------
@@ -390,6 +417,7 @@ function updateHud() {
   else if (session?.net) hint = 'Waiting for an opponent...';
   if ($('hint').textContent !== hint) $('hint').textContent = hint;
   if (debug) $('debug-panel').textContent = debugPanelText(lastStroke, session?.state);
+  updatePauseButton();
 }
 
 function duelHint() {
@@ -431,7 +459,7 @@ function makingHint(state, side) {
   const steps = 'Chalkling mode:';
   if (state.chains.some((c) => c.owner === side && !c.holdingId && !c.chalklingId)) return `${steps} 2. Draw a circle on the end of the chain.`;
   const holding = state.wards.find((w) => w.owner === side && w.holding);
-  if (holding && !holding.creature?.length) return `${steps} 3. Draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.`;
+  if (holding && !holding.creature?.length) return `${steps} 3. Draw your chalkling inside the circle: a blob body, plus gear for a power (sword, bow, shield, wings, crown, +, spiral).`;
   if (holding && !state.paths.some((p) => p.holdingId === holding.id)) {
     return `${steps} 4. Add detail, or draw a path out of the circle to where it should go (end it on an enemy chalkling to hunt it).`;
   }
@@ -485,12 +513,17 @@ window.addEventListener('keydown', (e) => {
   const side = keyboardSide();
   if (key === 'd') toggleDebug();
   else if (key === 's') saveStroke();
+  else if (key === 'p') togglePause();
+  else if (paused) return; // nothing else while paused
   else if (key === 'e') toggleEraser(side);
   else if (key === 'm') toggleMaking(side);
   else if (key === 'a') giveOrder(side, 'attack');
   else if (key === 'g') giveOrder(side, 'guard');
 });
 $('btn-debug').addEventListener('click', toggleDebug);
+$('btn-pause').addEventListener('click', togglePause);
+$('btn-resume').addEventListener('click', () => setPaused(false));
+$('btn-paused-menu').addEventListener('click', backToMenu);
 $('btn-save').addEventListener('click', saveStroke);
 $('btn-start').addEventListener('click', startLocalDuel);
 $('btn-rematch').addEventListener('click', rematch);

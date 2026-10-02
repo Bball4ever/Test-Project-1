@@ -34,6 +34,7 @@ export function damageWall(state, wall, amount, point) {
 }
 
 export function damageChalkling(state, c, amount) {
+  if (c.powers?.includes('shield')) amount *= state.powerCfg.shieldTaken;
   c.hp = Math.max(0, c.hp - amount);
   if (c.hp <= 0 && !c.gone) {
     c.gone = true;
