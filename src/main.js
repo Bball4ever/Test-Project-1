@@ -525,6 +525,9 @@ for (const pick of document.querySelectorAll('.pick')) {
   });
 }
 
+// The single-file version (published page) has no game server, so no online play.
+if (window.RITHMATIST_STATIC) document.querySelector('.pick[data-group="mode"][data-value="online"]')?.remove();
+
 showChoiceRows();
 updateControls();
 requestAnimationFrame(frame);

@@ -5,7 +5,8 @@
   "description": "A chalk-dueling browser game based on The Rithmatist (fan project).",
   "scripts": {
     "start": "node server/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "build:page": "node tools/build-page.js"
   },
   "dependencies": {
     "ws": "^8.22.0"

@@ -13,6 +13,10 @@ npm install     # once: gets the one dependency (ws, for online play)
 npm start       # then open http://localhost:8000 in Chrome
 ```
 
+## Playing without installing anything
+
+`npm run build:page` builds the whole game into one file, `dist/rithmatist-duel.html`, that runs in any browser with no server. This is the version published as a claude.ai page. Online play is hidden there, because it needs the game server.
+
 ## The four lines
 
 | Draw | Line | What it does |
