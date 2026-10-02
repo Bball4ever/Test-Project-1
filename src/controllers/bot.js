@@ -12,9 +12,10 @@ import { pathLength, resample } from '../recognizer/clean.js';
 import { hitSegment, hitCircle } from '../engine/collide.js';
 import { mainWard, otherSide } from '../engine/duel.js';
 import { findDefense, layoutDefense } from '../data/defenses.js';
-import { stickFigure, beetle, mirror } from '../data/creatures.js';
+import { stickFigure, beetle, urchin, turtle, mirror, fitInside } from '../data/creatures.js';
 
-const PEN_LIFT_MS = 120; // pause between strokes of a chalkling
+const PEN_LIFT_MS = 120; // pause between strokes
+const CREATURES = { stick: stickFigure, beetle, urchin, turtle };
 
 export class BotController {
   constructor({ owner = 'right', level = 'duelist', seed = 1, cfg = CONFIG } = {}) {
@@ -49,7 +50,7 @@ export class BotController {
     if (now >= this.waitUntil || (state.tick % 6 === 0 && this.urgent(state))) {
       const plan = this.decide(state);
       if (plan) {
-        this.plan = { ...plan, index: 0, startedAt: now + (plan.delayMs ?? 0) };
+        this.plan = { ...plan, index: 0, startedAt: now + (plan.delayMs ?? 0), seed: Math.floor(this.rng() * 1e6) };
       } else {
         this.waitUntil = now + 250;
       }
@@ -57,32 +58,62 @@ export class BotController {
     return null;
   }
 
+  // A plan is a list of steps: strokes to draw, lines to rub out, and checks.
   continuePlan(state, act, now) {
     const plan = this.plan;
-    const stroke = plan.strokes[plan.index];
-    const duration = Math.max(120, (pathLength(stroke) / this.level.speed) * 1000);
-    const t = (now - plan.startedAt) / duration;
-    if (t < 0) return null;
-    if (t < 1) {
-      return {
-        owner: this.owner,
-        seed: plan.seed + plan.index,
-        making: plan.kind === 'chalkling',
-        points: stroke.slice(0, Math.max(2, Math.ceil(t * stroke.length))),
-        draft: plan.kind === 'chalkling' ? plan.strokes.slice(0, plan.index) : null,
-      };
+    const stepNow = plan.steps[plan.index];
+    if (now < plan.startedAt) return null;
+    let done = false;
+    let live = null;
+
+    if (stepNow.kind === 'stroke') {
+      const stroke = stepNow.points;
+      const duration = Math.max(120, (pathLength(stroke) / this.level.speed) * 1000);
+      const t = (now - plan.startedAt) / duration;
+      if (t < 1) {
+        live = {
+          owner: this.owner,
+          seed: plan.seed + plan.index,
+          making: !!stepNow.making,
+          points: stroke.slice(0, Math.max(2, Math.ceil(t * stroke.length))),
+        };
+      } else {
+        act({ type: 'stroke', points: stroke });
+        done = true;
+      }
+    } else if (stepNow.kind === 'erase') {
+      // Rub back and forth along the line for long enough, then lift.
+      const elapsed = now - plan.startedAt;
+      const at = stepNow.along[Math.floor(elapsed / 100) % stepNow.along.length];
+      if (!plan.rubbing) {
+        act({ type: 'erase', phase: 'start', at });
+        plan.rubbing = true;
+      } else if (state.tick % 6 === 0) act({ type: 'erase', phase: 'move', at });
+      live = { owner: this.owner, eraser: at };
+      if (elapsed >= stepNow.ms) {
+        act({ type: 'erase', phase: 'stop', at });
+        plan.rubbing = false;
+        done = true;
+      }
+    } else if (stepNow.kind === 'check') {
+      if (!stepNow.test(state)) {
+        this.endPlan(now);
+        return null;
+      }
+      done = true;
     }
-    // Finished this stroke.
-    if (plan.kind === 'chalkling' && plan.index < plan.strokes.length - 1) {
+
+    if (done) {
       plan.index++;
       plan.startedAt = now + PEN_LIFT_MS;
-      return null;
+      if (plan.index >= plan.steps.length) this.endPlan(now);
     }
-    if (plan.kind === 'chalkling') act({ type: 'chalkling', strokes: plan.strokes });
-    else act({ type: 'stroke', points: stroke });
+    return live;
+  }
+
+  endPlan(now) {
     this.plan = null;
     this.waitUntil = now + this.thinkTime();
-    return null;
   }
 
   // --- Deciding what to do ---------------------------------------------------
@@ -123,8 +154,8 @@ export class BotController {
     // 4. Attack.
     const foe = mainWard(state, otherSide(this.owner));
     if (!foe) return null;
-    if (this.rng() < this.level.makeChance) return this.chalklingPlan();
-    return this.vigorPlan(state, foe) ?? this.chalklingPlan();
+    if (this.rng() < this.level.makeChance) return this.chalklingPlan(state, me, foe) ?? this.vigorPlan(state, foe);
+    return this.vigorPlan(state, foe) ?? this.chalklingPlan(state, me, foe);
   }
 
   // An enemy Vigor heading for our main circle, not yet reacted to.
@@ -199,7 +230,7 @@ export class BotController {
   }
 
   defensePlan(me) {
-    const want = { none: 0, shield: 1, full: 3 }[this.level.defense];
+    const want = { none: 0, shield: 1, full: 2 }[this.level.defense];
     if (this.defenseDone >= want) return null;
     const parts = layoutDefense(findDefense('placeholder'), me, this.owner);
     const part = parts[this.defenseDone++];
@@ -275,18 +306,52 @@ export class BotController {
     return this.strokePlan(points);
   }
 
-  chalklingPlan() {
-    const mid = this.cfg.engine.world.width / 2;
-    const cx = mid - this.dirToEnemy * (170 + this.rng() * 60);
-    const cy = 220 + this.rng() * 460;
-    const draw = this.level.creature === 'beetle' ? beetle : stickFigure;
-    let strokes = draw(cx, cy);
-    if (this.dirToEnemy < 0) strokes = mirror(strokes, cx);
-    return { kind: 'chalkling', strokes: strokes.map((s) => this.shaky(s)), seed: Math.floor(this.rng() * 1e6) };
+  // Make a chalkling the book way: a chain from the bind point facing down
+  // (or up), a holding circle on its end, the creature inside, a path to the
+  // enemy circle, then rub the chain out to set it loose.
+  chalklingPlan(state, me, foe) {
+    if (state.chains.some((c) => c.owner === this.owner)) return null; // one at a time
+    const r = 60;
+    for (const sign of [1, -1]) {
+      const angle = me.bindAngles.find((a) => Math.abs(Math.sin(a) - sign) < 0.01);
+      if (angle === undefined) continue;
+      const dir = { x: Math.cos(angle), y: Math.sin(angle) };
+      const bind = { x: me.center.x + dir.x * me.radius, y: me.center.y + dir.y * me.radius };
+      const end = { x: bind.x + dir.x * 80, y: bind.y + dir.y * 80 };
+      const center = { x: end.x + dir.x * r, y: end.y + dir.y * r };
+      if (!this.onMySide({ x: center.x, y: center.y + sign * r })) continue;
+
+      const ring = [];
+      const start = Math.atan2(-dir.y, -dir.x); // start drawing where the chain touches
+      for (let i = 0; i <= 44; i++) {
+        const a = start + (i / 42) * 2 * Math.PI;
+        ring.push({ x: center.x + r * Math.cos(a), y: center.y + r * Math.sin(a) });
+      }
+      let creature = CREATURES[this.level.creature](0, 0);
+      if (this.dirToEnemy < 0) creature = mirror(creature, 0);
+      creature = fitInside(creature, center, r * 0.92);
+
+      const toEnemy = norm({ x: foe.center.x - center.x, y: foe.center.y - center.y });
+      const pathStart = { x: center.x + toEnemy.x * r * 0.92, y: center.y + toEnemy.y * r * 0.92 };
+      const chainMid = { x: (bind.x + end.x) / 2, y: (bind.y + end.y) / 2 };
+      const along = [-0.3, 0, 0.3, 0].map((f) => ({ x: chainMid.x + dir.x * f * 60, y: chainMid.y + dir.y * f * 60 }));
+
+      return {
+        steps: [
+          { kind: 'stroke', points: this.shaky(line(bind, end)) },
+          { kind: 'stroke', points: this.shaky(ring) },
+          { kind: 'check', test: (s) => s.wards.some((w) => w.owner === this.owner && w.holding) },
+          ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true })),
+          { kind: 'stroke', points: this.shaky(line(pathStart, foe.center)) },
+          { kind: 'erase', along, ms: this.cfg.making.eraseMs + 300 },
+        ],
+      };
+    }
+    return null;
   }
 
   strokePlan(points) {
-    return { kind: 'stroke', strokes: [this.shaky(points)], seed: Math.floor(this.rng() * 1e6) };
+    return { steps: [{ kind: 'stroke', points: this.shaky(points) }] };
   }
 
   // Add a hand wobble: a slow drift plus a little jitter.

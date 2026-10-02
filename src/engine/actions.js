@@ -1,16 +1,20 @@
 // Everything a duelist can do, as plain data "actions":
-//   { type: 'stroke', points: [{x, y}, ...] }        draw one line
-//   { type: 'chalkling', strokes: [[{x, y}, ...], ...] } finish a chalkling
-//   { type: 'order', order: 'attack' | 'guard' }      command your chalklings
+//   { type: 'stroke', points: [{x, y}, ...] }               draw one line
+//   { type: 'erase', phase: 'start'|'move'|'stop', at: {x, y} }  rub a line out
+//   { type: 'order', order: 'attack' | 'guard' }             command your chalklings
+//
+// There's deliberately no "make a chalkling" action: chalklings can only be
+// made by drawing (chain, holding circle, creature, path) and erasing.
 //
 // Using plain data means the same action can come from the mouse, the bot,
 // or over the network, and the engine treats them all the same.
 
-import { addStroke, addChalkling, setOrder, ORDERS } from './duel.js';
+import { addStroke, setOrder, ORDERS } from './duel.js';
+import { eraseAction } from './erase.js';
 
 export function applyAction(state, side, action) {
   if (action.type === 'stroke') return addStroke(state, side, action.points);
-  if (action.type === 'chalkling') return addChalkling(state, side, action.strokes);
+  if (action.type === 'erase') return eraseAction(state, side, action.phase, action.at);
   if (action.type === 'order') {
     setOrder(state, side, action.order);
     return { accepted: true, result: null };
@@ -19,7 +23,6 @@ export function applyAction(state, side, action) {
 }
 
 const MAX_POINTS = 3000;
-const MAX_STROKES = 30;
 
 function cleanPoints(raw) {
   if (!Array.isArray(raw) || raw.length < 1 || raw.length > MAX_POINTS) return null;
@@ -40,10 +43,9 @@ export function sanitizeAction(raw) {
     const points = cleanPoints(raw.points);
     return points && { type: 'stroke', points };
   }
-  if (raw?.type === 'chalkling') {
-    if (!Array.isArray(raw.strokes) || raw.strokes.length < 1 || raw.strokes.length > MAX_STROKES) return null;
-    const strokes = raw.strokes.map(cleanPoints);
-    return strokes.every(Boolean) ? { type: 'chalkling', strokes } : null;
+  if (raw?.type === 'erase' && ['start', 'move', 'stop'].includes(raw.phase)) {
+    const at = raw.at ? cleanPoints([raw.at])?.[0] : null;
+    return { type: 'erase', phase: raw.phase, at };
   }
   if (raw?.type === 'order' && ORDERS.includes(raw.order)) return { type: 'order', order: raw.order };
   return null;

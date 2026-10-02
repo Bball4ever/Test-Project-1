@@ -51,3 +51,52 @@ export function beetle(cx, cy, s = 1) {
 export function mirror(strokes, cx) {
   return strokes.map((stroke) => stroke.map((p) => ({ x: 2 * cx - p.x, y: p.y })));
 }
+
+// A spiky urchin: a small body with spikes all round and a jagged mouth. (Attacker.)
+export function urchin(cx, cy, s = 1) {
+  const strokes = [ring(cx, cy, 14 * s, 14 * s, 20)];
+  for (let k = 0; k < 10; k++) {
+    const a = (k / 10) * Math.PI * 2;
+    strokes.push(seg(cx + Math.cos(a) * 14 * s, cy + Math.sin(a) * 14 * s, cx + Math.cos(a) * 38 * s, cy + Math.sin(a) * 38 * s, 6));
+  }
+  const teeth = [];
+  for (let k = 0; k <= 6; k++) teeth.push({ x: cx - 9 * s + k * 3 * s, y: cy + (k % 2 ? 5 : -1) * s });
+  strokes.push(teeth);
+  return strokes;
+}
+
+// A bulky turtle: a big round shell, a pattern inside, a head and stubby feet. (Defender.)
+export function turtle(cx, cy, s = 1) {
+  return [
+    ring(cx, cy, 40 * s, 30 * s, 40), // shell
+    ring(cx, cy, 26 * s, 18 * s, 32), // shell pattern
+    ring(cx, cy, 11 * s, 8 * s, 20),
+    ring(cx + 50 * s, cy, 11 * s, 10 * s, 20), // head
+    ring(cx - 26 * s, cy + 32 * s, 8 * s, 6 * s, 14), // feet
+    ring(cx + 26 * s, cy + 32 * s, 8 * s, 6 * s, 14),
+  ];
+}
+
+// A leggy centipede: a long thin body and lots of short legs. (Runner.)
+export function centipede(cx, cy, s = 1) {
+  const strokes = [seg(cx - 60 * s, cy, cx + 60 * s, cy, 30)];
+  for (let k = 0; k < 8; k++) {
+    const x = cx - 52 * s + k * 15 * s;
+    strokes.push(seg(x, cy, x - 4 * s, cy - 14 * s, 4));
+    strokes.push(seg(x, cy, x - 4 * s, cy + 14 * s, 4));
+  }
+  return strokes;
+}
+
+// Shrink and move a creature so it fits inside a circle (a holding circle).
+export function fitInside(strokes, center, radius) {
+  const all = strokes.flat();
+  const minX = Math.min(...all.map((p) => p.x));
+  const maxX = Math.max(...all.map((p) => p.x));
+  const minY = Math.min(...all.map((p) => p.y));
+  const maxY = Math.max(...all.map((p) => p.y));
+  const mid = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
+  const half = Math.hypot(maxX - minX, maxY - minY) / 2 || 1;
+  const k = Math.min(1, (radius * 0.85) / half);
+  return strokes.map((stroke) => stroke.map((p) => ({ x: center.x + (p.x - mid.x) * k, y: center.y + (p.y - mid.y) * k })));
+}

@@ -50,13 +50,37 @@ test('professor beats duelist more often than not', () => {
   assert.ok(wins('professor', 'duelist') >= 5);
 });
 
-test('bots only create lines through the recognizer, and stay on their side', () => {
-  const { results, placed } = botDuel('duelist', 'student', 3);
+test('bots play by the same rules: strokes, erasing and orders only, on their own side', () => {
+  const actions = { left: new Set(), right: new Set() };
+  const state = createDuel();
+  const bots = {
+    left: new BotController({ owner: 'left', level: 'duelist', seed: 3 }),
+    right: new BotController({ owner: 'right', level: 'professor', seed: 4 }),
+  };
+  const events = [];
+  const results = [];
+  for (let i = 0; i < 60 * 120 && !state.winner; i++) {
+    for (const side of ['left', 'right']) {
+      bots[side].update(state, (action) => {
+        actions[side].add(action.type);
+        const r = applyAction(state, side, action);
+        results.push(r.result);
+        return r;
+      });
+    }
+    step(state);
+    events.push(...state.events.splice(0));
+  }
   for (const side of ['left', 'right']) {
-    const accepted = results[side].filter((r) => r && r.type !== 'dud').length;
-    const madeBySide = placed.filter((e) => e.owner === side).length;
-    assert.equal(madeBySide, accepted, `${side}: everything on the board came from a scored stroke`);
-    assert.ok(!results[side].some((r) => r?.reason === 'stay on your side'));
+    for (const type of actions[side]) assert.ok(['stroke', 'erase', 'order'].includes(type), `${side} used ${type}`);
+  }
+  assert.ok(!results.some((r) => r?.reason === 'stay on your side'));
+  // Every chalkling a bot made came out of a holding circle when its chain was rubbed out.
+  const born = events.filter((e) => e.type === 'placed' && e.kind === 'chalkling');
+  assert.ok(born.length > 0, 'the bots made chalklings the book way');
+  for (const e of born) {
+    const erased = events.find((x) => x.type === 'erased' && x.kind === 'chain' && x.owner === e.owner && x.tick === e.tick);
+    assert.ok(erased, 'released by erasing a chain');
   }
 });
 

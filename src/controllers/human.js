@@ -6,13 +6,15 @@
 
 export class HumanController {
   // element: the canvas to listen on
+  // onBegin(stroke) is called when a stroke starts (optional)
   // onStroke({ owner, pointerType, points }) is called when a stroke is finished
   // toWorld(clientX, clientY) turns a screen position into a board position
   // owner: a side ('left'/'right'), or a function (point) => side, so that on a
   //        shared touchscreen each stroke belongs to whichever half it starts in
-  constructor(element, { owner = 'left', onStroke, toWorld }) {
+  constructor(element, { owner = 'left', onBegin = () => {}, onStroke, toWorld }) {
     this.element = element;
     this.owner = owner;
+    this.onBegin = onBegin;
     this.onStroke = onStroke;
     this.toWorld = toWorld;
     this.enabled = true;
@@ -41,6 +43,7 @@ export class HumanController {
     const stroke = { owner, pointerType: e.pointerType, seed: Math.floor(e.timeStamp * 1000), points: [] };
     this.active.set(e.pointerId, stroke);
     this.addPoint(stroke, e);
+    this.onBegin(stroke);
   }
 
   move(e) {

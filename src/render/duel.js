@@ -47,7 +47,7 @@ export class DuelRenderer {
       const top = topOf(thing.points ?? thing.strokes.flat());
       const text =
         e.kind === 'chalkling'
-          ? `Chalkling: ${Math.round(thing.hp)} health, bite ${thing.bite.toFixed(0)}`
+          ? `${ROLE_NAMES[thing.role]}: ${Math.round(thing.hp)} health, bite ${thing.bite.toFixed(0)}, speed ${Math.round(thing.speed)}`
           : `${thing.main ? 'Main circle' : NAMES[e.kind]} ${Math.round(e.quality * 100)}%`;
       fx.push({ kind: 'label', text, x: top.x, y: top.y - 10, born: now, life: 2500, color: R.chalkColor });
     } else if (e.type === 'dud') {
@@ -67,6 +67,23 @@ export class DuelRenderer {
       fx.push({ kind: 'label', text: `-${Math.round(e.damage)}`, x: e.point.x, y: e.point.y - 14, rise: 30, born: now, life: 1100, color: R.dudColor });
     } else if (e.type === 'bounce' || e.type === 'fizzle') {
       fx.push(dust(e.point, now, 8, 40));
+    } else if (e.type === 'chain') {
+      fx.push(label(e.point, e.chalklingId ? 'Chained: draw a new path from it' : 'Chain + holding circle', now, R.makingColor));
+    } else if (e.type === 'path') {
+      fx.push(label(e.point, e.huntId ? 'Hunt that one!' : 'Path', now, R.makingColor));
+    } else if (e.type === 'command') {
+      const c = state.chalklings.find((x) => x.id === e.id);
+      const text = { path: 'Off it goes!', hunt: 'Hunting!', order: 'Following orders', return: 'Target gone: coming home' }[e.mode];
+      if (c) fx.push(label({ x: c.pos.x, y: c.pos.y - c.radius - 10 }, text, now, R.makingColor));
+    } else if (e.type === 'missionDone') {
+      fx.push(label({ x: e.point.x, y: e.point.y - 40 }, 'Mission done: coming home', now, R.makingColor));
+    } else if (e.type === 'waiting') {
+      fx.push(label({ x: e.point.x, y: e.point.y - 40 }, 'Waiting for a new command', now, R.makingColor));
+    } else if (e.type === 'erased') {
+      if (e.point) fx.push(dust(e.point, now, 22, 60));
+    } else if (e.type === 'creatureLost') {
+      fx.push(dust(e.point, now, 30, 90));
+      fx.push(label(e.point, 'Creature lost', now, R.dudColor));
     } else if (e.type === 'chalklingDied') {
       fx.push(dust(e.point, now, 28, 90));
     } else if (e.type === 'wallBroken') {
@@ -82,22 +99,48 @@ export class DuelRenderer {
 
   // template: optional { parts, done, anchor, showMain } from a practice defense.
   // drafts: chalklings still being drawn in Making mode (lists of strokes).
-  draw(state, liveStrokes, now, template = null, drafts = []) {
+  draw(state, liveStrokes, now, template = null) {
     const ctx = this.board.ctx;
     if (template) drawTemplate(ctx, template);
 
+    // Lines being rubbed out fade as the 3 seconds tick by.
+    const fading = new Map();
+    for (const e of Object.values(state.erasing ?? {})) if (e?.targetId) fading.set(e.targetId, e.progress ?? 0);
+    const fade = (id) => 1 - 0.8 * (fading.get(id) ?? 0);
+
     for (const wall of state.walls) {
       const c = this.cached(wall.id, wall.points, wall.id * 7919);
+      ctx.save();
+      ctx.globalAlpha = fade(wall.id);
       ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h);
+      ctx.restore();
     }
+
+    for (const chain of state.chains ?? []) {
+      const c = this.cached(chain.id, chain.points, chain.id * 7919);
+      ctx.save();
+      ctx.globalAlpha = fade(chain.id);
+      ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h);
+      drawChainLinks(ctx, chain);
+      ctx.restore();
+    }
+
+    for (const path of state.paths ?? []) drawPathLine(ctx, path.points, 0, fade(path.id) * 0.6, path.huntId);
 
     for (const ward of state.wards) {
       const c = this.cached(ward.id, ward.points, ward.id * 7919);
+      ctx.save();
+      ctx.globalAlpha = fade(ward.id);
       ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h);
+      ctx.restore();
       this.drawDamage(ctx, ward);
       if (ward.main) {
         drawBindPoints(ctx, ward);
         drawDuelist(ctx, ward.center);
+      }
+      if (ward.creature?.length) {
+        const pic = this.cached(`cr${ward.id}:${ward.creature.length}`, null, ward.id * 31, R.makingColor, ward.creature);
+        ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h);
       }
     }
 
@@ -114,10 +157,21 @@ export class DuelRenderer {
       ctx.restore();
     }
 
-    for (const c of state.chalklings) this.drawChalkling(ctx, c, now);
+    for (const c of state.chalklings) {
+      if (c.mode === 'path' && c.path) drawPathLine(ctx, c.path, c.pathIndex, 0.35, null);
+      this.drawChalkling(ctx, c, now);
+    }
+    for (const c of state.chalklings) {
+      if (c.mode === 'hunt') {
+        const prey = state.chalklings.find((x) => x.id === c.huntId);
+        if (prey) drawTargetMark(ctx, prey);
+      }
+    }
 
-    for (const draft of drafts) draft.forEach((stroke, i) => drawChalk(ctx, stroke, 900 + i, R.makingColor));
-    for (const live of liveStrokes) drawChalk(ctx, live.points, live.seed, live.making ? R.makingColor : R.chalkColor);
+    for (const live of liveStrokes) {
+      if (live.points?.length) drawChalk(ctx, live.points, live.seed, live.making ? R.makingColor : R.chalkColor);
+    }
+    for (const e of Object.values(state.erasing ?? {})) if (e?.at) drawEraser(ctx, e.at, e.targetId ? (e.progress ?? 0) : 0);
 
     this.drawEffects(ctx, now);
   }
@@ -151,6 +205,15 @@ export class DuelRenderer {
     ctx.translate(-c.origin.x, -c.origin.y);
     ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h);
     ctx.restore();
+
+    if (c.mode === 'waiting' || c.mode === 'held') {
+      ctx.save();
+      ctx.font = R.labelFont.replace(/^\d+px/, '20px');
+      ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(${R.makingColor}, ${0.6 + 0.3 * Math.sin(now / 300)})`;
+      ctx.fillText(c.mode === 'waiting' ? '?' : '…', c.pos.x, c.pos.y - c.radius - 18);
+      ctx.restore();
+    }
 
     if (c.hp < c.max) {
       const w = Math.max(30, c.radius * 1.4);
@@ -239,6 +302,81 @@ function dust(point, now, count, speed) {
     return { x: point.x, y: point.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, size: 1.5 + Math.random() * 2 };
   });
   return { kind: 'dust', specks, born: now, life: 700 };
+}
+
+const ROLE_NAMES = { attacker: 'Attacker', defender: 'Defender', runner: 'Runner', balanced: 'Chalkling' };
+
+function label(point, text, now, color) {
+  return { kind: 'label', text, x: point.x, y: point.y - 10, born: now, life: 2400, color, size: 16 };
+}
+
+// Little rings along a chain, so it looks like links.
+function drawChainLinks(ctx, chain) {
+  const len = Math.hypot(chain.to.x - chain.from.x, chain.to.y - chain.from.y);
+  const n = Math.max(2, Math.floor(len / 16));
+  ctx.strokeStyle = `rgba(${R.makingColor}, 0.7)`;
+  ctx.lineWidth = 1.5;
+  for (let i = 1; i < n; i++) {
+    const f = i / n;
+    ctx.beginPath();
+    ctx.ellipse(chain.from.x + (chain.to.x - chain.from.x) * f, chain.from.y + (chain.to.y - chain.from.y) * f, 4, 2.5, Math.atan2(chain.to.y - chain.from.y, chain.to.x - chain.from.x), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
+// A dashed path, from point `from` onward. Hunt paths are drawn in red.
+function drawPathLine(ctx, points, from, alpha, hunting) {
+  if (points.length - from < 2) return;
+  ctx.save();
+  ctx.strokeStyle = `rgba(${hunting ? R.dudColor : R.makingColor}, ${alpha})`;
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.setLineDash([10, 10]);
+  ctx.beginPath();
+  ctx.moveTo(points[from].x, points[from].y);
+  for (let i = from + 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.stroke();
+  const end = points[points.length - 1];
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(end.x, end.y, 5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// A red cross-hair over a chalkling that's being hunted.
+function drawTargetMark(ctx, c) {
+  const r = c.radius + 8;
+  ctx.save();
+  ctx.strokeStyle = `rgba(${R.dudColor}, 0.8)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(c.pos.x, c.pos.y, r, 0, Math.PI * 2);
+  for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    ctx.moveTo(c.pos.x + dx * (r - 6), c.pos.y + dy * (r - 6));
+    ctx.lineTo(c.pos.x + dx * (r + 6), c.pos.y + dy * (r + 6));
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// The eraser: a soft ring, filling up as the 3 seconds pass.
+function drawEraser(ctx, at, progress) {
+  const r = CONFIG.making.eraseReach;
+  ctx.save();
+  ctx.strokeStyle = `rgba(${R.chalkColor}, 0.35)`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(at.x, at.y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  if (progress > 0) {
+    ctx.strokeStyle = `rgba(${R.makingColor}, 0.95)`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, r, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // Faint tick marks where the bind points are.

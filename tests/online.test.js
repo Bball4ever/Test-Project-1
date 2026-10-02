@@ -121,3 +121,37 @@ test('the server only serves game files', async () => {
     await server.close();
   }
 });
+
+test('erasing works online, and the server does the timing', async () => {
+  const server = await startServer({ port: 0 });
+  try {
+    const a = await player(server.port);
+    const b = await player(server.port);
+    a.send({ t: 'create' });
+    const { code } = await a.waitFor(() => a.got('joined'));
+    b.send({ t: 'join', code });
+    await a.waitFor(() => a.got('start'));
+    a.send(stroke(S.circle({ cx: 350, cy: 450, r: 110, noise: 1 })));
+    a.send(stroke(S.line({ x1: 600, y1: 200, x2: 600, y2: 450 })));
+    await b.waitFor(() => b.state?.walls.length === 1);
+
+    const rub = (phase) => a.send({ t: 'action', action: { type: 'erase', phase, at: { x: 600, y: 300 } } });
+    rub('start');
+    const started = Date.now();
+    while (Date.now() - started < 1500) {
+      rub('move');
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.equal(b.state.walls.length, 1, 'not gone after 1.5 s');
+    while (Date.now() - started < 3400) {
+      rub('move');
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    rub('stop');
+    await b.waitFor(() => b.state.walls.length === 0);
+    a.ws.close();
+    b.ws.close();
+  } finally {
+    await server.close();
+  }
+});

@@ -46,7 +46,8 @@ export function drawDuelDebug(ctx, state) {
     ctx.beginPath();
     ctx.arc(c.pos.x, c.pos.y, c.radius, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.fillText(`${Math.round(c.hp)}hp bite ${c.bite.toFixed(1)} ${c.order} ${c.action}`, c.pos.x, c.pos.y + c.radius + 12);
+    ctx.fillText(`${c.role} ${Math.round(c.hp)}hp bite ${c.bite.toFixed(1)} speed ${Math.round(c.speed)}`, c.pos.x, c.pos.y + c.radius + 12);
+    ctx.fillText(`${c.mode}${c.mode === 'order' ? ` (${c.order})` : ''} ${c.action}`, c.pos.x, c.pos.y + c.radius + 25);
   }
   for (const v of state.vigors) {
     ctx.beginPath();

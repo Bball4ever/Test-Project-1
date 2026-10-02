@@ -12,7 +12,7 @@ import { makeSnapshot } from '../src/net/snapshot.js';
 
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O (they look like 1 and 0)
 const SNAPSHOT_EVERY = 2; // engine steps per snapshot (60 / 2 = 30 per second)
-const ACTIONS_PER_SECOND = 15; // generous for a person; stops floods
+const ACTIONS_PER_SECOND = 25; // room for drawing plus the eraser's 10 updates a second; stops floods
 const MAX_LIVE_POINTS = 2000;
 
 export class Rooms {

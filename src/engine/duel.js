@@ -11,7 +11,9 @@ import { hitSegment, hitCircle, reflect, sectionAt } from './collide.js';
 import { buildSections } from './wards.js';
 import { bindAngles, attach } from './bind.js';
 import { emit, otherSide, damageSection, damageWall, damageChalkling } from './damage.js';
-import { measureCreature, makeChalkling, stepChalklings } from './chalklings.js';
+import { stepChalklings } from './chalklings.js';
+import { holdingFor, addCreatureStroke, pathOrigin, addPath, chainToChalkling, holdOnChain, tidy } from './making.js';
+import { stepErasing } from './erase.js';
 
 export { otherSide };
 export const SIDES = ['left', 'right'];
@@ -19,10 +21,11 @@ export const ORDERS = ['attack', 'guard'];
 
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
-export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, bindPoints = {} } = {}) {
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, bindPoints = {} } = {}) {
   return {
     cfg,
     chalkCfg,
+    makeCfg,
     orders: { left: 'attack', right: 'attack' }, // what each side's chalklings do
     bindPoints: {
       left: bindPoints.left ?? cfg.defaultBindPoints,
@@ -35,6 +38,9 @@ export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, b
     walls: [], // Lines of Forbiddance
     vigors: [], // Lines of Vigor in flight
     chalklings: [], // Lines of Making, walking about
+    chains: [], // chains from bind points to holding circles or chalklings
+    paths: [], // paths drawn for chalklings, waiting for their chain to be erased
+    erasing: { left: null, right: null }, // what each side is rubbing out right now
     events: [], // things that just happened, for the renderer's effects
     nextId: 1,
   };
@@ -47,9 +53,17 @@ export function mainWard(state, side) {
 // A duelist draws a stroke. Returns { accepted, result } where result is the
 // recognizer's verdict (turned into a dud if a duel rule rejects it).
 export function addStroke(state, owner, rawPoints) {
-  if (state.winner) return { accepted: false, result: null };
+  if (state.winner || !rawPoints.length) return { accepted: false, result: null };
   const cfg = state.cfg;
   const points = rawPoints.map((p) => ({ x: p.x, y: p.y }));
+
+  // Drawing a chalkling: strokes inside a holding circle are part of the creature,
+  // and a stroke leading out of it (or out of a chained chalkling) is its path.
+  const holding = holdingFor(state, owner, points);
+  if (holding) return addCreatureStroke(state, holding, points);
+  const origin = pathOrigin(state, owner, points);
+  if (origin) return addPath(state, owner, points, origin);
+
   const result = recognize(points);
 
   const reject = (reason) => {
@@ -77,11 +91,12 @@ export function addStroke(state, owner, rawPoints) {
       points,
     };
     if (ward.main) ward.bindAngles = bindAngles(state.bindPoints[owner], owner);
-    else attachTo(state, home, ward);
+    else if (!holdOnChain(state, owner, ward, home)) attachTo(state, home, ward);
     state.wards.push(ward);
   } else if (result.type === 'forbiddance') {
     const health = cfg.wallHealth * result.quality;
     const wall = { id, kind: 'wall', owner, from: result.shape.from, to: result.shape.to, quality: result.quality, health, max: health, points };
+    if (chainToChalkling(state, owner, wall, home)) return { accepted: true, result: { ...result, type: 'chain' }, id };
     attachTo(state, home, wall);
     state.walls.push(wall);
   } else if (result.type === 'vigor') {
@@ -105,44 +120,13 @@ export function addStroke(state, owner, rawPoints) {
   return { accepted: true, result, id };
 }
 
-// A duelist finishes drawing a chalkling (one or more strokes).
-// Returns { accepted, result } like addStroke.
-export function addChalkling(state, owner, rawStrokes) {
-  if (state.winner) return { accepted: false, result: null };
-  const cc = state.chalkCfg;
-  const strokes = rawStrokes
-    .slice(0, cc.maxStrokes)
-    .map((stroke) => stroke.map((p) => ({ x: p.x, y: p.y })))
-    .filter((stroke) => stroke.length >= 2);
-  const all = strokes.flat();
-  const measure = measureCreature(strokes, cc);
-  const quality = measure.detail / cc.maxDetail;
-  const reject = (reason) => {
-    emit(state, { type: 'dud', owner, reason, points: all, strokes });
-    return { accepted: false, result: { type: 'dud', reason, quality, detail: measure.detail, metrics: measure } };
-  };
-
-  const home = mainWard(state, owner);
-  if (!home) return reject('draw your circle first');
-  if (!all.length || !onOwnSide(all, owner, state.cfg)) return reject('stay on your side');
-  if (measure.ink < cc.minInk) return reject('too little chalk to come alive');
-  if (measure.size > cc.maxSize) return reject('creature too big');
-  const id = state.nextId++;
-  const c = makeChalkling(id, owner, strokes, measure, cc, state.orders[owner]);
-  if (Math.hypot(c.pos.x - home.center.x, c.pos.y - home.center.y) < home.radius + c.radius * 0.5) {
-    state.nextId--;
-    return reject('draw it outside your circle');
-  }
-  state.chalklings.push(c);
-  emit(state, { type: 'placed', owner, kind: 'chalkling', id, quality });
-  return { accepted: true, id, result: { type: 'chalkling', reason: null, quality, detail: measure.detail, metrics: measure } };
-}
-
-// Give all of a side's chalklings an order: 'attack' or 'guard'.
+// Give a side's chalklings an order: 'attack' or 'guard'. It applies to
+// chalklings that have finished their paths; ones on a mission, or waiting to
+// be chained for a new command, aren't affected.
 export function setOrder(state, owner, order) {
   if (!ORDERS.includes(order)) return;
   state.orders[owner] = order;
-  for (const c of state.chalklings) if (c.owner === owner) c.order = order;
+  for (const c of state.chalklings) if (c.owner === owner && c.mode === 'order') c.order = order;
   emit(state, { type: 'order', owner, order });
 }
 
@@ -166,8 +150,10 @@ export function step(state) {
   state.tick++;
   state.timeMs = state.tick * cfg.stepMs;
 
+  stepErasing(state);
   for (const v of state.vigors) moveVigor(state, v, dt);
   stepChalklings(state, dt);
+  tidy(state);
   state.vigors = state.vigors.filter((v) => !v.gone);
   state.wards = state.wards.filter((w) => !w.gone);
   state.walls = state.walls.filter((w) => !w.gone);

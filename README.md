@@ -20,9 +20,29 @@ npm start       # then open http://localhost:8000 in Chrome
 | A circle | **Warding** | Your first circle is your main circle, and you stand in it. It has 24 sections; if any one breaks, you lose. Rounder circles are stronger, and wobbly spots are weak spots. |
 | A straight line | **Forbiddance** | A wall. Waves bounce off it (losing 30% power), and chalklings can't pass it. |
 | A wave | **Vigor** | Your attack. It flies the way you drew it and damages the first circle or chalkling it hits. Even waves hit harder. |
-| A creature (Making mode) | **Making** | A chalkling: your drawing comes alive, walks over, and chews through lines. More detail means stronger but slower. |
+| A creature in a holding circle | **Making** | A chalkling: your drawing comes alive, walks its path, and chews through lines. See below. |
 
 **Bind points:** green ticks on your main circle. A line or small circle that touches your circle at a bind point is **bound** (+50% strength). Touching anywhere else weakens that part of your circle (−25%).
+
+## Making a chalkling (the book way)
+
+1. **Chain:** draw a straight line from one of your green bind points.
+2. **Holding circle:** draw a circle touching the chain's far end.
+3. **Creature:** draw it inside the holding circle, in as many strokes as you like.
+4. **Path:** draw a line from the circle to where it should go. It follows the path no matter what, chewing through any wall in its way. **End the path on an enemy chalkling** and yours hunts that one until it's dead.
+5. **Release:** turn on the **Eraser** and rub out the chain for 3 seconds in a row. The chalkling breaks out.
+
+When a path ends, the chalkling follows the **Attack / Guard** buttons. After a hunt, it walks back to your side and waits (shown with a "?"). To give it a new command: draw a line from a bind point to it (a new chain), draw a new path from it, and erase the chain.
+
+**What it's good at depends on what you draw.**
+- **Spiky** drawings (claws, teeth, lots of loose line ends) are **attackers**: they bite harder.
+- **Bulky** drawings (shells, big round closed shapes) are **defenders**: they have more health.
+- **Long, leggy** drawings are **runners**: they're faster.
+- More chalk and detail makes any of them stronger, but slower.
+
+## Erasing
+
+Press **Eraser** (or E), then rub one of your own lines for **3 seconds in a row**. If you lift off or move away, the count starts again. You can erase your walls, chains, paths and small circles, but never your main circle or anything of your opponent's.
 
 ## Modes
 
@@ -35,8 +55,8 @@ npm start       # then open http://localhost:8000 in Chrome
 
 | Key | Button | Does |
 | --- | --- | --- |
-| M | Making | Toggle Making mode (draw chalklings). A creature comes alive when you pause. |
-| A / G | Attack / Guard | Orders for your chalklings. |
+| E | Eraser | Turn the eraser on or off. Rub a line for 3 seconds to remove it. |
+| A / G | Attack / Guard | Orders for chalklings that have finished their paths. |
 | D | Debug | Shows the numbers behind every score, section health, and chalkling stats. |
 | S | Save stroke | Copies your last stroke as JSON, to turn into a test. |
 
@@ -50,7 +70,7 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 63 tests covering:
+There are 73 tests covering:
 - the recognizer
 - the duel engine (damage, bounces, breach)
 - bind points
@@ -68,7 +88,7 @@ src/
   recognizer/      stroke clean-up, classify, score (no canvas, no game state)
   engine/          the duel rules, in fixed 1/60 s steps (no canvas, no input)
   render/          draws the state; never changes it
-  controllers/     things that make strokes: human, dummy, bot, Making-mode drafts
+  controllers/     things that make strokes: human, dummy, bot
   data/            named defenses and ready-made creature drawings
   net/             online snapshots and the browser's connection
 server/            the game server: serves the files, runs online rooms

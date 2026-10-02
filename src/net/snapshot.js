@@ -5,7 +5,7 @@
 // big and never change, so each one is sent only once, the first time it
 // appears; after that, snapshots just say where things are and how healthy.
 
-const LISTS = ['wards', 'walls', 'vigors', 'chalklings'];
+const LISTS = ['wards', 'walls', 'vigors', 'chalklings', 'chains', 'paths'];
 
 // sent: a Set of ids whose drawings have already been sent.
 export function makeSnapshot(state, sent) {
@@ -15,6 +15,7 @@ export function makeSnapshot(state, sent) {
     winner: state.winner,
     orders: state.orders,
     bindPoints: state.bindPoints,
+    erasing: state.erasing,
   };
   for (const list of LISTS) {
     snap[list] = state[list].map((thing) => {

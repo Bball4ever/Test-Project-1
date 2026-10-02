@@ -100,7 +100,6 @@ export const CONFIG = {
 
   // --- Lines of Making (chalklings) ---
   chalkling: {
-    idleMs: 1100, // in Making mode, a creature comes alive after you stop drawing this long
     maxStrokes: 16,
     minInk: 60, // total chalk (units of line) needed to make anything at all
     maxSize: 220, // a creature can't be bigger than this across
@@ -112,6 +111,19 @@ export const CONFIG = {
     maxDetail: 15,
     closedGapRatio: 0.15, // a stroke whose ends meet this closely is a closed shape
     minClosedInk: 12, // ...and is at least this long (so a dot doesn't count)
+    // Roles: what the drawing looks like shifts its strength around.
+    //   spiky (loose line ends, sharp corners: claws, teeth)  → attacker: stronger bite
+    //   bulky (big closed shapes: shells, round bodies)        → defender: more health
+    //   long and leggy (stretched body, lots of short strokes)  → runner: faster
+    cornerAngle: 1.1, // a bend sharper than this (radians, about 63°) is a "corner"
+    spikePerLooseEnd: 0.35,
+    spikePerCorner: 1,
+    bulkPerArea: 1 / 100, // closed area (square units) → bulk points, after a square root
+    leggyPerShortStroke: 1,
+    shortStroke: 45, // open strokes shorter than this count as legs (on a long body)
+    leggyPerStretch: 3, // per unit of length/width beyond 1.5
+    roleBoost: 0.9, // how much a role shifts stats (0 = roles don't matter)
+    balancedBelow: 0.45, // if no trait has this share, the chalkling is "balanced"
     // Stats from detail.
     baseHealth: 20,
     healthPerDetail: 10,
@@ -126,6 +138,21 @@ export const CONFIG = {
     guardRange: 300, // guards defend this far from their own circle
     guardDistance: 70, // guards stand this far in front of their circle
     contactPad: 4,
+  },
+
+  // --- Making chalklings the book way, and erasing ---
+  //   1. a chain from a bind point   2. a holding circle on the chain's end
+  //   3. the creature inside the circle   4. a path out of it   5. erase the chain
+  making: {
+    eraseMs: 3000, // rubbing a line out takes this long, without stopping
+    eraseGraceMs: 400, // rubbing back and forth may leave the line this long without restarting
+    eraseReach: 24, // the eraser counts as "on" a line within this distance
+    insideFraction: 0.75, // a stroke this much inside a holding circle is part of the creature
+    pathStartReach: 24, // a path must start this close to the holding circle's line (or the chalkling)
+    huntReach: 30, // a path ending this close to an enemy chalkling means "hunt it"
+    pathSpacing: 8, // path points are this far apart
+    waypointReach: 8, // a chalkling is "at" a path point when this close
+    returnDepth: 140, // after a hunt, chalklings walk back this far onto their own side
   },
 
   // --- The bot (milestone 5) ---
@@ -145,14 +172,14 @@ export const CONFIG = {
       duelist: {
         noise: 4, speed: 500, think: [1200, 2100],
         defendChance: 0.55, counterChance: 0.6,
-        aim: 'damaged', makeChance: 0.18, creature: 'stick',
+        aim: 'damaged', makeChance: 0.18, creature: 'urchin',
         defense: 'shield',
       },
       professor: {
         noise: 1.8, speed: 680, think: [750, 1350],
         defendChance: 0.9, counterChance: 0.9,
         aim: 'weakest', makeChance: 0.22, creature: 'beetle',
-        defense: 'full',
+        defense: 'full', // its shield and one wall; the bottom bind point stays free for chains
       },
     },
   },
