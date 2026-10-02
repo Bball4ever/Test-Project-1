@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rithmatist Duel</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <canvas id="board"></canvas>
+
+    <header class="hud">
+      <h1>Rithmatist Duel</h1>
+      <p>Draw a <b>circle</b> (Warding), a <b>straight line</b> (Forbiddance) or a <b>wave</b> (Vigor).</p>
+    </header>
+
+    <nav class="buttons">
+      <button id="btn-debug" title="Show the numbers behind each score">Debug <kbd>D</kbd></button>
+      <button id="btn-save" title="Copy your last stroke so it can become a test">Save stroke <kbd>S</kbd></button>
+      <button id="btn-clear" title="Wipe the board">Clear <kbd>C</kbd></button>
+    </nav>
+
+    <pre id="debug-panel" hidden></pre>
+    <div id="toast" hidden></div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

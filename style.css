@@ -1,0 +1,110 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #121a15;
+  color: #e9ece2;
+  font-family: system-ui, sans-serif;
+  /* Stop the page from bouncing or zooming while you draw. */
+  overscroll-behavior: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+#board {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  display: block;
+  /* Hand every touch to our code instead of scrolling or zooming the page. */
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.hud {
+  position: fixed;
+  top: 10px;
+  left: 16px;
+  pointer-events: none;
+  opacity: 0.75;
+}
+
+.hud h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.hud p {
+  margin: 2px 0 0;
+  font-size: 13px;
+}
+
+.buttons {
+  position: fixed;
+  bottom: 12px;
+  left: 16px;
+  display: flex;
+  gap: 8px;
+}
+
+button {
+  font: inherit;
+  font-size: 13px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 6px;
+  padding: 8px 12px;
+  min-height: 40px; /* big enough to tap */
+  cursor: pointer;
+}
+
+button:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+kbd {
+  opacity: 0.6;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+#debug-panel {
+  position: fixed;
+  top: 10px;
+  right: 16px;
+  margin: 0;
+  padding: 10px 12px;
+  min-width: 230px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(120, 210, 255, 0.4);
+  border-radius: 6px;
+  color: rgb(160, 225, 255);
+  font: 12px/1.45 ui-monospace, monospace;
+  pointer-events: none;
+}
+
+#toast {
+  position: fixed;
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 90vw;
+  padding: 10px 14px;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 6px;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+[hidden] {
+  display: none !important;
+}

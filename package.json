@@ -1,0 +1,10 @@
+{
+  "name": "rithmatist-duel",
+  "private": true,
+  "type": "module",
+  "description": "A chalk-dueling browser game based on The Rithmatist (fan project).",
+  "scripts": {
+    "start": "node tools/serve.js",
+    "test": "node --test"
+  }
+}
