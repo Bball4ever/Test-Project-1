@@ -24,7 +24,7 @@ export function obstaclesFor(state, c, { wallsBlock = true, ignoreWardId = null,
 }
 
 // Is the point `p` too close to a line?
-function pointBlocked(p, obs) {
+export function pointBlocked(p, obs) {
   for (const w of obs.walls) if (closestOnSegment(p, w.from, w.to).dist < obs.clearance) return true;
   for (const w of obs.wards) {
     if (Math.abs(Math.hypot(p.x - w.center.x, p.y - w.center.y) - w.radius) < obs.clearance) return true;

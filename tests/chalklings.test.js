@@ -160,13 +160,24 @@ test('a chalkling follows its path no matter what, ignoring enemy chalklings', (
   assert.ok(state.events.some((e) => e.type === 'pathDone' && e.id === ours.id), 'it reached the end of its path');
 });
 
-test('on a path, walls in the way get chewed through', () => {
+test('on a path, it goes around a wall if it can, and still attacks the enemy circle', () => {
   const state = duel();
-  addStroke(state, 'right', S.line({ x1: 950, y1: 450, x2: 950, y2: 850 }));
-  const c = makeChalklingBookWay(state, 'left', beetle(0, 0), { k: 1, to: { x: 1150, y: 760 } });
-  run(state, 40);
-  assert.equal(state.walls.length, 0, 'the wall was chewed through');
-  assert.ok(c.pos.x > 950);
+  addStroke(state, 'right', S.line({ x1: 950, y1: 300, x2: 950, y2: 640 }));
+  const wall = state.walls[0];
+  makeChalklingBookWay(state, 'left', beetle(0, 0), { k: 1, to: mainWard(state, 'right').center });
+  run(state, 60);
+  assert.equal(wall.health, wall.max, 'it went around the wall');
+  assert.ok(mainWard(state, 'right').sections.some((s) => s.health < s.max), 'and attacked the circle');
+});
+
+test('on a path, it chews through walls when there is no way round', () => {
+  const state = duel();
+  // Walls right across the board.
+  addStroke(state, 'right', S.line({ x1: 950, y1: 0, x2: 950, y2: 460 }));
+  addStroke(state, 'right', S.line({ x1: 950, y1: 440, x2: 950, y2: 900 }));
+  makeChalklingBookWay(state, 'left', beetle(0, 0), { k: 1, to: mainWard(state, 'right').center });
+  run(state, 60);
+  assert.ok(state.walls.length < 2 || state.walls.some((w) => w.health < w.max), 'it chewed a wall');
 });
 
 test('a path ending on an enemy chalkling means hunt it; afterwards it comes home and waits', () => {
