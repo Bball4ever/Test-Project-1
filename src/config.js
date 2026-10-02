@@ -143,7 +143,7 @@ export const CONFIG = {
   // Each duelist has this much chalk for the whole duel. Every stroke uses
   // chalk equal to its length (failed strokes too). Out of chalk, out of luck.
   chalk: {
-    supply: 8000,
+    supply: 20000,
     // If both duelists have less than this left and nothing is moving
     // (no Vigors in flight, no chalklings), the duel is a draw.
     tooLittle: 150,

@@ -38,12 +38,12 @@ test("you can't draw with chalk you don't have", () => {
 test('spamming runs out: endless waves stop working', () => {
   const state = createDuel();
   addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: 110, noise: 1 }));
+  const wave = (i) => S.wave({ x: 500, y: 450, length: 200, amplitude: 20, seed: i + 1 });
+  const most = Math.ceil(CONFIG.chalk.supply / pathLength(wave(0))) + 5;
   let accepted = 0;
-  for (let i = 0; i < 100; i++) {
-    if (addStroke(state, 'left', S.wave({ x: 500, y: 450, length: 200, amplitude: 20, seed: i + 1 })).accepted) accepted++;
-  }
-  assert.ok(accepted < 30, `only so many waves fit in the supply (got ${accepted})`);
-  assert.ok(state.chalk.left < CONFIG.chalk.tooLittle + 400);
+  for (let i = 0; i < most * 2; i++) if (addStroke(state, 'left', wave(i)).accepted) accepted++;
+  assert.ok(accepted <= most, `only so many waves fit in the supply (got ${accepted}, limit about ${most})`);
+  assert.ok(state.chalk.left < CONFIG.chalk.tooLittle + 400, 'the chalk is used up');
 });
 
 test('if both sides are out of chalk and nothing is moving, the duel is a draw', () => {

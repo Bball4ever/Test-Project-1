@@ -26,7 +26,7 @@ npm start       # then open http://localhost:8000 in Chrome
 | A wave | **Vigor** | Your attack. It flies the way you drew it and damages the first circle or chalkling it hits. Even waves hit harder. |
 | A creature in a holding circle | **Making** | A chalkling: your drawing comes alive, walks its path, and chews through lines. See below. |
 
-**Chalk limit:** each duelist has a set amount of chalk for the whole duel (8,000 to start; see the meters at the top). Every stroke uses chalk equal to its length, even if it fails, so spamming runs you dry. If both sides run out and nothing is still moving, the duel is a draw.
+**Chalk limit:** each duelist has a set amount of chalk for the whole duel (20,000 to start; see the meters at the top). Every stroke uses chalk equal to its length, even if it fails, so spamming runs you dry. If both sides run out and nothing is still moving, the duel is a draw.
 
 **Bind points:** green ticks on your main circle. A line or small circle that touches your circle at a bind point is **bound** (+50% strength). Touching anywhere else weakens that part of your circle (−25%).
 
