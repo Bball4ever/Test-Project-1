@@ -5,6 +5,10 @@ import WebSocket from 'ws';
 import { startServer } from '../server/index.js';
 import { readSnapshot } from '../src/net/snapshot.js';
 import * as S from './fixtures/strokes.js';
+import { CONFIG } from '../src/config.js';
+
+// These tests aren't about the chalk limit, so give both sides endless chalk.
+CONFIG.chalk.supply = Infinity;
 
 // A test player: connects, remembers every message, and rebuilds the duel
 // state from snapshots the same way the browser does.

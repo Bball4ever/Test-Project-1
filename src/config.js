@@ -132,10 +132,21 @@ export const CONFIG = {
     minRadius: 12,
     maxRadius: 60,
     // Behaviour.
-    aggroRange: 170, // attackers go after enemy chalklings this close
+    closeRange: 80, // any chalkling attacks an enemy chalkling that comes this close (edge to edge)
+    aggroRange: 170, // chalklings on the Attack order go after enemy chalklings this close
     guardRange: 300, // guards defend this far from their own circle
     guardDistance: 70, // guards stand this far in front of their circle
     contactPad: 4,
+  },
+
+  // --- The chalk limit ---
+  // Each duelist has this much chalk for the whole duel. Every stroke uses
+  // chalk equal to its length (failed strokes too). Out of chalk, out of luck.
+  chalk: {
+    supply: 8000,
+    // If both duelists have less than this left and nothing is moving
+    // (no Vigors in flight, no chalklings), the duel is a draw.
+    tooLittle: 150,
   },
 
   // --- Making chalklings the book way, and erasing ---

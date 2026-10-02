@@ -6,6 +6,10 @@ import { findRoute, lineClear, obstaclesFor } from '../src/engine/route.js';
 import { stickFigure, urchin } from '../src/data/creatures.js';
 import * as S from './fixtures/strokes.js';
 import { run, makeChalklingBookWay } from './fixtures/making.js';
+import { CONFIG } from '../src/config.js';
+
+// These tests aren't about the chalk limit, so give both sides endless chalk.
+CONFIG.chalk.supply = Infinity;
 
 function duel() {
   const state = createDuel();

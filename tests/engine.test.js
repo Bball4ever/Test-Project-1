@@ -7,6 +7,9 @@ import { dummyCirclePoints } from '../src/controllers/dummy.js';
 import { CONFIG } from '../src/config.js';
 import * as S from './fixtures/strokes.js';
 
+// These tests aren't about the chalk limit, so give both sides endless chalk.
+CONFIG.chalk.supply = Infinity;
+
 const E = CONFIG.engine;
 
 // A duel where both sides already have their main circles.

@@ -7,6 +7,9 @@ import { DEFENSES, findDefense, layoutDefense, tracedParts } from '../src/data/d
 import { CONFIG } from '../src/config.js';
 import * as S from './fixtures/strokes.js';
 
+// These tests aren't about the chalk limit, so give both sides endless chalk.
+CONFIG.chalk.supply = Infinity;
+
 const E = CONFIG.engine;
 const HOME = { center: { x: 350, y: 450 }, radius: 120 };
 

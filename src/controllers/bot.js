@@ -48,7 +48,10 @@ export class BotController {
 
     // While "thinking", it still glances at incoming danger every so often.
     if (now >= this.waitUntil || (state.tick % 6 === 0 && this.urgent(state))) {
-      const plan = this.decide(state);
+      let plan = this.decide(state);
+      // Can it afford all that chalk? If not, don't start.
+      const cost = plan?.steps.reduce((sum, s) => sum + (s.kind === 'stroke' ? pathLength(s.points) : 0), 0) ?? 0;
+      if (plan && cost > state.chalk[this.owner]) plan = null;
       if (plan) {
         this.plan = { ...plan, index: 0, startedAt: now + (plan.delayMs ?? 0), seed: Math.floor(this.rng() * 1e6) };
       } else {

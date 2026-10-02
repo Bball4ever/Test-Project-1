@@ -179,6 +179,7 @@ export class DuelRenderer {
     }
     for (const e of Object.values(state.erasing ?? {})) if (e?.at) drawEraser(ctx, e.at, e.targetId ? (e.progress ?? 0) : 0);
 
+    if (state.chalk) drawChalkMeters(ctx, state, this.board.world);
     this.drawEffects(ctx, now);
   }
 
@@ -292,6 +293,37 @@ function dust(point, now, count, speed) {
 }
 
 const ROLE_NAMES = { attacker: 'Attacker', defender: 'Defender', runner: 'Runner', balanced: 'All-rounder' };
+
+// How much chalk each duelist has left: a stick of chalk that wears down.
+function drawChalkMeters(ctx, state, world) {
+  if (!Number.isFinite(state.chalkStart)) return; // endless chalk: nothing to show
+  const mid = world.width / 2;
+  for (const side of ['left', 'right']) {
+    const left = Math.max(0, state.chalk[side] ?? 0);
+    const share = left / state.chalkStart;
+    const w = 220;
+    const x = side === 'left' ? mid - 40 - w : mid + 40;
+    const y = 18;
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, 12, 6);
+    ctx.fill();
+    ctx.fillStyle = share < 0.15 ? `rgba(${R.dudColor}, 0.9)` : `rgba(${R.chalkColor}, 0.85)`;
+    ctx.beginPath();
+    const fillW = Math.max(0, w * share);
+    if (fillW > 0) {
+      ctx.roundRect(side === 'left' ? x + w - fillW : x, y, fillW, 12, 6);
+      ctx.fill();
+    }
+    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = side === 'left' ? 'right' : 'left';
+    ctx.fillStyle = `rgba(${R.chalkColor}, 0.85)`;
+    ctx.fillText(`Chalk ${Math.round(left).toLocaleString()}`, side === 'left' ? x + w : x, y + 16);
+    ctx.restore();
+  }
+}
 
 // What a chalkling is doing, in words.
 function statusText(c) {

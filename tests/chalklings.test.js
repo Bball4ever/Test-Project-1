@@ -10,6 +10,9 @@ import { CONFIG } from '../src/config.js';
 import * as S from './fixtures/strokes.js';
 import { run, bindPoint, line, chainAndCircle, drawCreature, drawPath, erase, makeChalklingBookWay, MAKING } from './fixtures/making.js';
 
+// These tests aren't about the chalk limit, so give both sides endless chalk.
+CONFIG.chalk.supply = Infinity;
+
 const C = CONFIG.chalkling;
 const MID = CONFIG.engine.world.width / 2;
 
@@ -143,21 +146,36 @@ test('erasing a holding circle before release loses the creature', () => {
 
 // --- Commands ---------------------------------------------------------------------------------
 
-test('a chalkling follows its path no matter what, ignoring enemy chalklings', () => {
+test('a chalkling on its path attacks an enemy that comes close, then carries on', () => {
   const state = duel();
-  // An enemy chalkling standing guard right on our path.
   setOrder(state, 'right', 'guard');
-  const enemy = makeChalklingBookWay(state, 'right', turtle(0, 0), { k: 1 });
+  const enemy = makeChalklingBookWay(state, 'right', stickFigure(0, 0), { k: 1 });
   run(state, 6);
-  const goal = { x: enemy.pos.x + 150, y: enemy.pos.y - 200 };
-  const ours = makeChalklingBookWay(state, 'left', centipede(0, 0), { k: 1, to: goal });
+  // Our path runs right past the guarding stick figure.
+  const goal = { x: enemy.pos.x - 40, y: enemy.pos.y - 260 };
+  const ours = makeChalklingBookWay(state, 'left', beetle(0, 0), { k: 1, to: goal });
   let fought = false;
-  for (let i = 0; i < 60 * 30 && ours.mode === 'path'; i++) {
+  for (let i = 0; i < 60 * 60 && !state.events.some((e) => e.type === 'pathDone' && e.id === ours.id); i++) {
     run(state, 1 / 60);
     if (ours.action === 'fight') fought = true;
   }
-  assert.equal(fought, false, 'it never stopped to fight');
-  assert.ok(state.events.some((e) => e.type === 'pathDone' && e.id === ours.id), 'it reached the end of its path');
+  assert.ok(fought, 'it stopped to fight');
+  assert.ok(enemy.gone || !state.chalklings.includes(enemy), 'and won');
+  assert.ok(state.events.some((e) => e.type === 'pathDone' && e.id === ours.id), 'then finished its path');
+});
+
+test('a waiting chalkling attacks an enemy that comes close', () => {
+  const state = duel();
+  setOrder(state, 'right', 'guard');
+  const prey = makeChalklingBookWay(state, 'right', stickFigure(0, 0), { k: 1 });
+  run(state, 6);
+  const hunter = makeChalklingBookWay(state, 'left', urchin(0, 0), { k: 1, to: prey.pos });
+  run(state, 40);
+  assert.equal(hunter.mode, 'waiting');
+  // A new enemy walks up to it.
+  const visitor = makeChalklingBookWay(state, 'right', stickFigure(0, 0), { k: 3, to: hunter.pos });
+  run(state, 40);
+  assert.ok(visitor.gone || !state.chalklings.includes(visitor), 'it dealt with the visitor');
 });
 
 test('on a path, it goes around a wall if it can, and still attacks the enemy circle', () => {

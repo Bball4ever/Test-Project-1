@@ -7,6 +7,7 @@
 
 import { CONFIG } from '../config.js';
 import { recognize } from '../recognizer/index.js';
+import { pathLength } from '../recognizer/clean.js';
 import { hitSegment, hitCircle, sectionAt } from './collide.js';
 import { buildSections } from './wards.js';
 import { bindAngles, attach } from './bind.js';
@@ -21,11 +22,14 @@ export const ORDERS = ['attack', 'guard'];
 
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
-export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, bindPoints = {} } = {}) {
+// options.chalk: how much chalk each duelist starts with (CONFIG.chalk.supply).
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, bindPoints = {}, chalk = CONFIG.chalk.supply } = {}) {
   return {
     cfg,
     chalkCfg,
     makeCfg,
+    chalk: { left: chalk, right: chalk }, // chalk each duelist has left
+    chalkStart: chalk,
     orders: { left: 'attack', right: 'attack' }, // what each side's chalklings do
     bindPoints: {
       left: bindPoints.left ?? cfg.defaultBindPoints,
@@ -33,7 +37,7 @@ export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, m
     },
     tick: 0,
     timeMs: 0,
-    winner: null, // 'left' | 'right' once someone is breached
+    winner: null, // 'left' | 'right' once someone is breached, or 'draw'
     wards: [], // Lines of Warding (circles)
     walls: [], // Lines of Forbiddance
     vigors: [], // Lines of Vigor in flight
@@ -57,6 +61,15 @@ export function addStroke(state, owner, rawPoints, { making = false } = {}) {
   if (state.winner || !rawPoints.length) return { accepted: false, result: null };
   const cfg = state.cfg;
   const points = rawPoints.map((p) => ({ x: p.x, y: p.y }));
+
+  // Every stroke uses up chalk equal to its length, whether or not it works.
+  const cost = pathLength(points);
+  if (cost > state.chalk[owner]) {
+    emit(state, { type: 'dud', owner, reason: 'out of chalk', points });
+    return { accepted: false, result: { type: 'dud', reason: 'out of chalk', quality: 0, metrics: { length: cost } } };
+  }
+  state.chalk[owner] -= cost;
+
   if (making) return addMakingStroke(state, owner, points, mainWard(state, owner));
 
   const result = recognize(points);
@@ -149,6 +162,13 @@ export function step(state) {
   state.wards = state.wards.filter((w) => !w.gone);
   state.walls = state.walls.filter((w) => !w.gone);
   state.chalklings = state.chalklings.filter((c) => !c.gone);
+
+  // Both out of chalk and nothing left moving: nobody can win, so it's a draw.
+  const low = CONFIG.chalk.tooLittle;
+  if (!state.winner && state.chalk.left < low && state.chalk.right < low && !state.vigors.length && !state.chalklings.length) {
+    state.winner = 'draw';
+    emit(state, { type: 'draw' });
+  }
 }
 
 function moveVigor(state, v, dt) {

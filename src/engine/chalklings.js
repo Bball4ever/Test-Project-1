@@ -182,8 +182,23 @@ export function stepChalklings(state, dt) {
 
 function stepOne(state, c, dt) {
   const mk = state.makeCfg;
-  if (c.mode === 'held' || c.mode === 'waiting') {
-    defendSelf(state, c, dt);
+  if (c.mode === 'held') {
+    defendSelf(state, c, dt); // chained: it can't move, but it bites back
+    return;
+  }
+  // An enemy chalkling that comes close gets attacked, whatever this one was
+  // doing; afterwards it carries on. (Hunters stay locked on their target, and
+  // Attack/Guard chalklings already go after enemies, further out.)
+  if (c.mode !== 'hunt' && c.mode !== 'order') {
+    const foe = closeEnemy(state, c);
+    if (foe) {
+      if (touching(state, c, foe)) bite(state, c, foe, dt);
+      else navigate(state, c, foe.pos, dt);
+      return;
+    }
+  }
+  if (c.mode === 'waiting') {
+    c.action = 'idle';
     return;
   }
   if (c.mode === 'hunt') {
@@ -229,7 +244,6 @@ function stepOne(state, c, dt) {
       emit(state, { type: 'waiting', owner: c.owner, id: c.id, point: { ...c.pos } });
       return;
     }
-    if (defendSelf(state, c, dt)) return;
     navigate(state, c, goal, dt);
     return;
   }
@@ -292,6 +306,15 @@ function navigate(state, c, goal, dt, { enemyWardsBlock = true, ignoreWardId = n
     if (c.route.length > 1) next = c.route[0];
   }
   walkToward(state, c, next, dt, chewIfNoWayRound && !c.route);
+}
+
+// The nearest enemy chalkling within striking distance, if any.
+function closeEnemy(state, c) {
+  const reach = state.chalkCfg.closeRange;
+  return nearest(
+    c.pos,
+    state.chalklings.filter((e) => e.owner !== c.owner && !e.gone && distance(e.pos, c.pos) < c.radius + e.radius + reach),
+  );
 }
 
 function touching(state, c, other) {

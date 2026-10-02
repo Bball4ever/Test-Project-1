@@ -129,7 +129,10 @@ function showEnd() {
   endShown = true;
   const { state, seats, mode } = session;
   const secs = (state.timeMs / 1000).toFixed(1);
-  if (mode === 'local') {
+  if (state.winner === 'draw') {
+    $('end-title').textContent = 'Out of chalk: a draw.';
+    $('end-stats').textContent = `${secs} seconds. Both sides ran out of chalk without a breach.`;
+  } else if (mode === 'local') {
     $('end-title').textContent = `Breach! The ${state.winner} player wins.`;
     $('end-stats').textContent = `${secs} seconds. Left threw ${seats.left.waves} Lines of Vigor, right threw ${seats.right.waves}.`;
   } else {
@@ -298,7 +301,7 @@ function frame(now) {
 
 function onEvent(e, now) {
   renderer.handleEvent(e, session.state, now);
-  if (e.type === 'breach') breachAt = now;
+  if (e.type === 'breach' || e.type === 'draw') breachAt = now;
   if (e.type === 'placed' && e.kind === 'vigor') session.seats[e.owner].waves++;
 }
 
@@ -404,6 +407,8 @@ function duelHint() {
   }
   const side = keyboardSide();
   const where = mode === 'online' ? `You are on the ${side.toUpperCase()} half. ` : '';
+  if (state.chalk && state.chalk[side] < CONFIG.chalk.tooLittle) return `${where}You're out of chalk. Your chalklings and waves already out there are all you have left.`;
+  if (state.chalk && state.chalk[side] < 500) return `${where}Almost out of chalk: ${Math.round(state.chalk[side])} left. Only short strokes will fit now.`;
   if (seats[side].eraser) return `${where}Eraser on: rub one of your lines for 3 seconds in a row to remove it. Press E or the button to stop erasing.`;
   if (seats[side].making) return where + makingHint(state, side);
   if (state.chains.some((c) => c.owner === side && (c.holdingId || c.chalklingId))) {

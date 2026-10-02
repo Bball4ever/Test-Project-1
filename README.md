@@ -26,6 +26,8 @@ npm start       # then open http://localhost:8000 in Chrome
 | A wave | **Vigor** | Your attack. It flies the way you drew it and damages the first circle or chalkling it hits. Even waves hit harder. |
 | A creature in a holding circle | **Making** | A chalkling: your drawing comes alive, walks its path, and chews through lines. See below. |
 
+**Chalk limit:** each duelist has a set amount of chalk for the whole duel (8,000 to start; see the meters at the top). Every stroke uses chalk equal to its length, even if it fails, so spamming runs you dry. If both sides run out and nothing is still moving, the duel is a draw.
+
 **Bind points:** green ticks on your main circle. A line or small circle that touches your circle at a bind point is **bound** (+50% strength). Touching anywhere else weakens that part of your circle (−25%).
 
 ## Making a chalkling (the book way)
@@ -38,7 +40,7 @@ Press **Chalkling** (or M) first: while it's on, your strokes are chalkling part
 4. **Path:** draw a line from the circle to where it should go. It follows the path, going around any wall in its way (or chewing through if there's no way round), and attacks the enemy circle if the path leads there. **End the path on an enemy chalkling** and yours hunts that one until it's dead.
 5. **Release:** turn Chalkling off, turn on the **Eraser** and rub out the chain for 3 seconds in a row. The chalkling breaks out.
 
-Chalklings find their own way: they walk **around** walls and circles (using A* route-finding), and only chew through a wall if there's no way round. The enemy circle they're attacking is never avoided: they go straight for it.
+Any chalkling attacks an enemy chalkling that comes close, then carries on with what it was doing (a hunter stays on its target). Chalklings find their own way: they walk **around** walls and circles (using A* route-finding), and only chew through a wall if there's no way round. The enemy circle they're attacking is never avoided: they go straight for it.
 
 When a path ends, the chalkling follows the **Attack / Guard** buttons. After a hunt, it walks back to your side and waits (shown with a "?"). To give it a new command: in Chalkling mode, draw a line from a bind point to it (a new chain) and a new path from it, then erase the chain.
 
@@ -79,11 +81,12 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 81 tests covering:
+There are 87 tests covering:
 - the recognizer
 - the duel engine (damage, walls stopping waves, breach)
 - bind points
-- chalklings (including finding their way around lines)
+- chalklings (including finding their way around lines, and fighting nearby enemies)
+- the chalk limit
 - the bots (including bot-vs-bot ranking)
 - online play (two real connections, checking both see the same duel)
 
