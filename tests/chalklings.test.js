@@ -8,7 +8,7 @@ import { stickFigure, beetle, urchin, turtle, centipede } from '../src/data/crea
 import { dummyCirclePoints } from '../src/controllers/dummy.js';
 import { CONFIG } from '../src/config.js';
 import * as S from './fixtures/strokes.js';
-import { run, bindPoint, line, chainAndCircle, drawCreature, drawPath, erase, makeChalklingBookWay } from './fixtures/making.js';
+import { run, bindPoint, line, chainAndCircle, drawCreature, drawPath, erase, makeChalklingBookWay, MAKING } from './fixtures/making.js';
 
 const C = CONFIG.chalkling;
 const MID = CONFIG.engine.world.width / 2;
@@ -72,14 +72,35 @@ test('a chalkling only comes alive after chain, circle, creature, path, and eras
   assert.equal(state.chalklings[0].mode, 'path');
 });
 
-test('the chain has to start at a bind point', () => {
+test('in Chalkling mode, the chain has to start at a bind point', () => {
   const state = duel();
   const a = Math.PI / 4; // halfway between bind points
   const start = { x: 300 + Math.cos(a) * 110, y: 450 + Math.sin(a) * 110 };
   const end = { x: start.x + Math.cos(a) * 90, y: start.y + Math.sin(a) * 90 };
-  addStroke(state, 'left', line(start, end));
-  addStroke(state, 'left', S.circle({ cx: end.x + Math.cos(a) * 50, cy: end.y + Math.sin(a) * 50, r: 50, noise: 1 }));
+  const r = addStroke(state, 'left', line(start, end), MAKING);
+  assert.equal(r.result.reason, 'a chain must start at a green bind point');
   assert.equal(state.chains.length, 0);
+});
+
+test('Chalkling mode says what to draw next', () => {
+  const state = duel();
+  const wave = S.wave({ x: 450, y: 200, length: 150 });
+  assert.equal(addStroke(state, 'left', wave, MAKING).result.reason, 'start with a straight line from a green bind point');
+  const { point, dir } = bindPoint(state, 'left', 1);
+  addStroke(state, 'left', line(point, { x: point.x + dir.x * 90, y: point.y + dir.y * 90 }), MAKING);
+  assert.equal(addStroke(state, 'left', wave, MAKING).result.reason, 'next: a circle on the end of the chain');
+  assert.equal(state.walls.length, 0, 'nothing drawn in Chalkling mode became a wall');
+  assert.equal(state.vigors.length, 0, 'or a wave');
+});
+
+test('without Chalkling mode, a line from a bind point and a circle on its end are just a wall and a shield', () => {
+  const state = duel();
+  const { point, dir } = bindPoint(state, 'left', 1);
+  const end = { x: point.x + dir.x * 90, y: point.y + dir.y * 90 };
+  addStroke(state, 'left', line(point, end));
+  addStroke(state, 'left', S.circle({ cx: end.x + dir.x * 55, cy: end.y + dir.y * 55, r: 55, noise: 1 }));
+  assert.equal(state.chains.length, 0);
+  assert.equal(state.walls.length, 1);
   assert.ok(!state.wards.some((w) => w.holding));
 });
 
@@ -169,7 +190,7 @@ test('a path ending on an enemy chalkling means hunt it; afterwards it comes hom
 
   // Chain it, give it a new path, erase the chain: it goes.
   const { point } = bindPoint(state, 'left', 0);
-  assert.equal(addStroke(state, 'left', line(point, hunter.pos)).result.type, 'chain');
+  assert.equal(addStroke(state, 'left', line(point, hunter.pos), MAKING).result.type, 'chain');
   assert.equal(hunter.mode, 'held');
   drawPath(state, 'left', hunter.pos, hunter.radius, mainWard(state, 'right').center);
   const chain = state.chains[0];

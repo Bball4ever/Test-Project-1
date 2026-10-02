@@ -88,14 +88,12 @@ export const CONFIG = {
     offPointPenalty: 0.25, // touching away from a bind point: that section loses 25%
 
     // --- Lines of Forbiddance ---
-    wallHealth: 150, // × line quality (only matters once chalklings exist)
-    wallDamageFromBounce: 0, // fraction of a Vigor's power a wall loses per bounce
+    wallHealth: 150, // × line quality
+    wallDamageFromVigor: 1, // a wall takes this much of a Vigor's power when it stops one
 
     // --- Lines of Vigor ---
     vigorDamage: 40, // × wave quality
     vigorSpeed: 520, // units per second
-    bounceLoss: 0.3, // power lost per bounce off a wall
-    minVigorPower: 5, // a Vigor weaker than this fizzles out
   },
 
   // --- Lines of Making (chalklings) ---

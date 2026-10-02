@@ -1,10 +1,13 @@
-// Helpers that make chalklings the book way in tests:
+// Helpers that make chalklings the book way in tests, with Chalkling mode on:
 // chain from a bind point → holding circle → creature inside → path → erase the chain.
 
 import { addStroke, step, mainWard } from '../../src/engine/duel.js';
 import { applyAction } from '../../src/engine/actions.js';
 import { fitInside } from '../../src/data/creatures.js';
 import * as S from './strokes.js';
+
+// Strokes drawn with Chalkling mode on.
+export const MAKING = { making: true };
 
 export function run(state, seconds) {
   const steps = Math.round((seconds * 1000) / state.cfg.stepMs);
@@ -27,22 +30,22 @@ export function line(a, b) {
 export function chainAndCircle(state, side, k = 1, { chainLength = 90, r = 55 } = {}) {
   const { point, dir } = bindPoint(state, side, k);
   const end = { x: point.x + dir.x * chainLength, y: point.y + dir.y * chainLength };
-  addStroke(state, side, line(point, end));
+  addStroke(state, side, line(point, end), MAKING);
   const center = { x: end.x + dir.x * r, y: end.y + dir.y * r };
-  addStroke(state, side, S.circle({ cx: center.x, cy: center.y, r, noise: 1 }));
+  addStroke(state, side, S.circle({ cx: center.x, cy: center.y, r, noise: 1 }), MAKING);
   return { center, r, chainMid: { x: (point.x + end.x) / 2, y: (point.y + end.y) / 2 } };
 }
 
 // Step 3: draw the creature inside the circle.
 export function drawCreature(state, side, strokes, center, r) {
-  return fitInside(strokes, center, r).map((s) => addStroke(state, side, s));
+  return fitInside(strokes, center, r).map((s) => addStroke(state, side, s, MAKING));
 }
 
 // Step 4: a path from the edge of the circle (or a chalkling) to `to`.
 export function drawPath(state, side, from, r, to) {
   const d = Math.hypot(to.x - from.x, to.y - from.y);
   const start = { x: from.x + ((to.x - from.x) / d) * r * 0.9, y: from.y + ((to.y - from.y) / d) * r * 0.9 };
-  return addStroke(state, side, line(start, to));
+  return addStroke(state, side, line(start, to), MAKING);
 }
 
 // Rub the eraser at `at` for `seconds`, then lift it.

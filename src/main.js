@@ -45,7 +45,7 @@ let debug = false;
 let tryWithoutTouch = false;
 
 function makeSeat(kind, controller = null) {
-  return { kind, controller, live: null, eraser: false, waves: 0 };
+  return { kind, controller, live: null, eraser: false, making: false, waves: 0 };
 }
 
 // --- Input ---------------------------------------------------------------------
@@ -74,7 +74,8 @@ const human = new HumanController(canvas, {
     }
     if (session.state.winner) return;
     if (session.net) session.net.send({ t: 'live', points: null });
-    const { result } = act(stroke.owner, { type: 'stroke', points: stroke.points }, stroke.pointerType);
+    const making = session.seats[stroke.owner].making;
+    const { result } = act(stroke.owner, { type: 'stroke', points: stroke.points, making }, stroke.pointerType);
     if (result) lastStroke = { result, pointerType: stroke.pointerType, raw: stroke.points };
   },
 });
@@ -199,7 +200,7 @@ function onNetMessage(msg) {
   } else if (msg.t === 'start' && session?.net) {
     session.cache = new Map();
     session.state = null;
-    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, waves: 0 });
+    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, waves: 0 });
     beginDuel();
     showToast(`Duel on! You are on the ${session.mySide.toUpperCase()} half.`);
   } else if (msg.t === 'snap' && session?.net) {
@@ -211,7 +212,7 @@ function onNetMessage(msg) {
   } else if (msg.t === 'result' && lastSentRaw) {
     lastStroke = { result: msg.result, ...lastSentRaw };
   } else if (msg.t === 'live' && session?.net) {
-    session.seats[msg.side].live = msg.points ? { owner: msg.side, seed: 77, points: msg.points, making: insideHolding(msg.side, msg.points[0]) } : null;
+    session.seats[msg.side].live = msg.points ? { owner: msg.side, seed: 77, points: msg.points, making: !!msg.making } : null;
   } else if (msg.t === 'rematchWanted' && session?.net && msg.side !== session.mySide) {
     showToast('Your opponent wants a rematch.');
   } else if (msg.t === 'opponentLeft') {
@@ -239,7 +240,7 @@ function sendLiveStroke(now) {
   liveSentAt = now;
   const step = Math.max(1, Math.floor(mine.points.length / 400));
   const points = mine.points.filter((_, i) => i % step === 0).map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
-  session.net.send({ t: 'live', points });
+  session.net.send({ t: 'live', points, making: session.seats[session.mySide].making });
 }
 
 function setOnlineStatus(text) {
@@ -282,11 +283,11 @@ function frame(now) {
   if (session?.state) {
     const { seats } = session;
     const state = session.net ? predicted(session.state, now - session.snapAt) : session.state;
-    // Strokes inside a holding circle are creature parts: shown in Making colour.
+    // Strokes drawn in Chalkling mode are shown in the Making colour.
     const live = human
       .liveStrokes()
       .filter((s) => !s.erasing)
-      .map((s) => ({ ...s, making: insideHolding(s.owner, s.points[0]) }));
+      .map((s) => ({ ...s, making: seats[s.owner].making }));
     for (const side of SIDES) if (seats[side].live?.points) live.push(seats[side].live);
     renderer.draw(state, live, now, practiceTemplate());
     if (debug) drawDuelDebug(board.ctx, state);
@@ -320,16 +321,23 @@ function keepErasing(now) {
   }
 }
 
-function insideHolding(side, p) {
-  return !!p && session.state.wards.some((w) => w.owner === side && w.holding && Math.hypot(p.x - w.center.x, p.y - w.center.y) < w.radius);
-}
-
 // --- Eraser and orders ----------------------------------------------------------
 
 function toggleEraser(side) {
   const seat = session?.state && session.seats[side];
   if (seat?.kind !== 'human') return;
   seat.eraser = !seat.eraser;
+  if (seat.eraser) seat.making = false;
+  updateControls();
+}
+
+// Chalkling mode: while it's on, your strokes are chalkling parts
+// (chain, holding circle, creature, path) instead of ordinary lines.
+function toggleMaking(side) {
+  const seat = session?.state && session.seats[side];
+  if (seat?.kind !== 'human') return;
+  seat.making = !seat.making;
+  if (seat.making) seat.eraser = false;
   updateControls();
 }
 
@@ -354,6 +362,7 @@ function updateControls() {
     box.hidden = seat?.kind !== 'human';
     if (box.hidden) continue;
     box.querySelector('[data-act="eraser"]').classList.toggle('selected', seat.eraser);
+    box.querySelector('[data-act="making"]').classList.toggle('selected', seat.making);
     for (const order of ['attack', 'guard']) {
       box.querySelector(`[data-act="${order}"]`).classList.toggle('selected', session.state.orders[side] === order);
     }
@@ -396,8 +405,10 @@ function duelHint() {
   const side = keyboardSide();
   const where = mode === 'online' ? `You are on the ${side.toUpperCase()} half. ` : '';
   if (seats[side].eraser) return `${where}Eraser on: rub one of your lines for 3 seconds in a row to remove it. Press E or the button to stop erasing.`;
-  const making = makingHint(state, side);
-  if (making) return where + making;
+  if (seats[side].making) return where + makingHint(state, side);
+  if (state.chains.some((c) => c.owner === side && (c.holdingId || c.chalklingId))) {
+    return `${where}To set your chalkling loose, erase its chain: Eraser (E), then rub the chain for 3 seconds.`;
+  }
   const template = practiceTemplate();
   const main = mainWard(state, side);
   if (template && main) {
@@ -408,23 +419,25 @@ function duelHint() {
   }
   if (template) return 'Trace the faint circle first: it becomes your main circle.';
   if (!main) return `${where}Draw your main circle on the ${side} half.`;
-  return `${where}Waves attack, straight lines make walls. To make a chalkling: draw a line from a green bind point, then a circle on its end.`;
+  return `${where}Waves attack, straight lines make walls. To make a chalkling, press Chalkling (M).`;
 }
 
-// Step-by-step help while you're making a chalkling.
+// Step-by-step help while Chalkling mode is on.
 function makingHint(state, side) {
+  const steps = 'Chalkling mode:';
+  if (state.chains.some((c) => c.owner === side && !c.holdingId && !c.chalklingId)) return `${steps} 2. Draw a circle on the end of the chain.`;
   const holding = state.wards.find((w) => w.owner === side && w.holding);
-  if (holding && !holding.creature?.length) return 'Draw your chalkling inside the holding circle. Spiky = attacker, bulky = defender, long and leggy = runner.';
+  if (holding && !holding.creature?.length) return `${steps} 3. Draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.`;
   if (holding && !state.paths.some((p) => p.holdingId === holding.id)) {
-    return 'Add more detail, or draw a path out of the circle to where it should go (end it on an enemy chalkling to hunt it).';
+    return `${steps} 4. Add detail, or draw a path out of the circle to where it should go (end it on an enemy chalkling to hunt it).`;
   }
   const held = state.chalklings.find((c) => c.owner === side && c.mode === 'held');
-  if (held && !state.paths.some((p) => p.chalklingId === held.id)) return 'Chained! Draw a new path from your chalkling.';
-  if (state.chains.some((c) => c.owner === side)) return 'Now erase the chain to set it loose: Eraser (E), then rub the chain for 3 seconds.';
+  if (held && !state.paths.some((p) => p.chalklingId === held.id)) return `${steps} Chained! Draw a new path from your chalkling.`;
+  if (state.chains.some((c) => c.owner === side)) return `${steps} Done! Turn it off (M), then erase the chain (E, rub 3 seconds) to set it loose.`;
   if (state.chalklings.some((c) => c.owner === side && c.mode === 'waiting')) {
-    return 'A chalkling is waiting (?): draw a line from a green bind point to it, then a path, then erase the line.';
+    return `${steps} 1. Draw a straight line from a green bind point (or from one to your waiting chalkling to give it a new command).`;
   }
-  return null;
+  return `${steps} 1. Draw a straight line out from one of the green bind points on your circle.`;
 }
 
 // --- Keys and buttons ----------------------------------------------------------
@@ -469,6 +482,7 @@ window.addEventListener('keydown', (e) => {
   if (key === 'd') toggleDebug();
   else if (key === 's') saveStroke();
   else if (key === 'e') toggleEraser(side);
+  else if (key === 'm') toggleMaking(side);
   else if (key === 'a') giveOrder(side, 'attack');
   else if (key === 'g') giveOrder(side, 'guard');
 });
@@ -489,6 +503,7 @@ $('btn-try-anyway').addEventListener('click', () => {
 for (const box of document.querySelectorAll('.side-controls')) {
   const side = box.dataset.side;
   box.querySelector('[data-act="eraser"]').addEventListener('click', () => toggleEraser(side));
+  box.querySelector('[data-act="making"]').addEventListener('click', () => toggleMaking(side));
   box.querySelector('[data-act="attack"]').addEventListener('click', () => giveOrder(side, 'attack'));
   box.querySelector('[data-act="guard"]').addEventListener('click', () => giveOrder(side, 'guard'));
 }

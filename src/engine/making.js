@@ -1,5 +1,7 @@
 // Making chalklings the book way, and commanding them.
 //
+// While a duelist has Chalkling mode on, their strokes are read as chalkling
+// parts instead of ordinary lines:
 //   1. Chain:          a straight line from one of your bind points.
 //   2. Holding circle: a circle touching the chain's far end.
 //   3. Creature:       strokes drawn inside the holding circle.
@@ -11,7 +13,9 @@
 // point to the chalkling), draw a new path from it, and erase the chain.
 
 import { distance, resample } from '../recognizer/clean.js';
+import { recognize } from '../recognizer/index.js';
 import { emit } from './damage.js';
+import { buildSections } from './wards.js';
 import { boundIndex } from './bind.js';
 import { measureCreature, makeChalkling, command } from './chalklings.js';
 
@@ -87,51 +91,96 @@ export function addPath(state, owner, points, origin) {
   return { accepted: true, result: { type: 'path', reason: null, quality: 1, hunt: !!prey } };
 }
 
-// A new straight line from a bind point that ends on one of our chalklings
-// chains that chalkling. Returns true if it did.
-export function chainToChalkling(state, owner, wall, main) {
-  const end = freeEndFromBindPoint(main, wall, state.cfg);
-  if (!end) return false;
-  const c = state.chalklings.find(
-    (e) => e.owner === owner && !e.gone && e.mode !== 'held' && near(end, e.pos, e.radius + state.cfg.touchTolerance),
-  );
-  if (!c) return false;
-  const chain = { id: wall.id, kind: 'chain', owner, from: wall.from, to: wall.to, points: wall.points, holdingId: null, chalklingId: c.id };
-  state.chains.push(chain);
-  c.mode = 'held';
-  c.chainId = chain.id;
-  c.path = null;
-  c.huntId = null;
-  emit(state, { type: 'chain', owner, id: chain.id, chalklingId: c.id, point: end });
-  return true;
+// A stroke drawn in Chalkling mode. Works out which step it is from what's
+// already on the board, and says what's needed next if it doesn't fit.
+export function addMakingStroke(state, owner, points, main) {
+  const reject = (reason, result = null) => {
+    emit(state, { type: 'dud', owner, reason, points });
+    return { accepted: false, result: { ...(result ?? {}), type: 'dud', reason, quality: result?.quality ?? 0 } };
+  };
+  if (!main) return reject('draw your main circle first');
+
+  // 3. A stroke inside one of our holding circles is part of the creature.
+  const holding = holdingFor(state, owner, points);
+  if (holding) return addCreatureStroke(state, holding, points);
+  // 4. A stroke leading out of a holding circle (or a chained chalkling) is its path.
+  const origin = pathOrigin(state, owner, points);
+  if (origin) return addPath(state, owner, points, origin);
+
+  const result = recognize(points);
+  const sideOk = points.every((p) => (owner === 'left' ? p.x <= state.cfg.world.width / 2 + state.cfg.sideMargin : p.x >= state.cfg.world.width / 2 - state.cfg.sideMargin));
+  if (!sideOk) return reject('stay on your side', result);
+
+  // 1. A straight line from a bind point is a chain. If it ends on one of our
+  //    chalklings, that chalkling is chained (ready for a new command).
+  if (result.type === 'forbiddance') {
+    const line = { from: result.shape.from, to: result.shape.to };
+    const end = freeEndFromBindPoint(main, line, state.cfg);
+    if (!end) return reject('a chain must start at a green bind point', result);
+    const chain = { id: state.nextId++, kind: 'chain', owner, from: line.from, to: line.to, points, holdingId: null, chalklingId: null };
+    const c = state.chalklings.find(
+      (e) => e.owner === owner && !e.gone && e.mode !== 'held' && near(end, e.pos, e.radius + state.cfg.touchTolerance),
+    );
+    if (c) {
+      chain.chalklingId = c.id;
+      c.mode = 'held';
+      c.chainId = chain.id;
+      c.path = null;
+      c.huntId = null;
+    }
+    state.chains.push(chain);
+    emit(state, { type: 'chain', owner, id: chain.id, chalklingId: c?.id ?? null, point: end });
+    return { accepted: true, result: { ...result, type: 'chain' } };
+  }
+
+  // 2. A circle touching the end of a chain that isn't holding anything yet.
+  if (result.type === 'warding') {
+    const { center, radius } = result.shape;
+    let best = null;
+    for (const chain of state.chains) {
+      if (chain.owner !== owner || chain.holdingId || chain.chalklingId) continue;
+      const end = freeEndFromBindPoint(main, chain, state.cfg);
+      const gap = end ? Math.abs(distance(end, center) - radius) : Infinity;
+      if (gap < state.cfg.touchTolerance && (!best || gap < best.gap)) best = { chain, gap };
+    }
+    if (!best) return reject(nextStepReason(state, owner), result);
+    const ward = {
+      id: state.nextId++,
+      kind: 'ward',
+      owner,
+      main: false,
+      center,
+      radius,
+      quality: result.quality,
+      sections: buildSections(result, state.cfg),
+      points,
+      holding: true,
+      chainId: best.chain.id,
+      creature: [],
+    };
+    best.chain.holdingId = ward.id;
+    state.wards.push(ward);
+    emit(state, { type: 'holding', owner, id: ward.id, point: { x: center.x, y: center.y - radius } });
+    return { accepted: true, result: { ...result, type: 'holding' } };
+  }
+
+  return reject(nextStepReason(state, owner), result);
 }
 
-// A new circle touching the far end of one of our lines from a bind point turns
-// that line into a chain and the circle into a holding circle. Returns true if it did.
-export function holdOnChain(state, owner, ward, main) {
-  let best = null;
-  for (const wall of state.walls) {
-    if (wall.owner !== owner || wall.gone) continue;
-    const end = freeEndFromBindPoint(main, wall, state.cfg);
-    if (!end) continue;
-    const gap = Math.abs(distance(end, ward.center) - ward.radius);
-    if (gap < state.cfg.touchTolerance && (!best || gap < best.gap)) best = { wall, gap, end };
-  }
-  if (!best) return false;
-  const { wall } = best;
-  state.walls = state.walls.filter((w) => w !== wall); // it's a chain now, not a wall
-  const chain = { id: wall.id, kind: 'chain', owner, from: wall.from, to: wall.to, points: wall.points, holdingId: ward.id, chalklingId: null };
-  state.chains.push(chain);
-  ward.holding = true;
-  ward.chainId = chain.id;
-  ward.creature = [];
-  emit(state, { type: 'chain', owner, id: chain.id, holdingId: ward.id, point: best.end });
-  return true;
+// What the player should draw next, for a stroke that didn't fit.
+function nextStepReason(state, owner) {
+  if (state.chains.some((c) => c.owner === owner && !c.holdingId && !c.chalklingId)) return 'next: a circle on the end of the chain';
+  const holding = state.wards.find((w) => w.owner === owner && w.holding && !w.gone);
+  if (holding && !holding.creature.length) return 'draw your chalkling inside the circle';
+  if (holding) return 'draw inside the circle, or a path out of it';
+  if (state.chalklings.some((c) => c.owner === owner && c.mode === 'held')) return 'next: a path from your chained chalkling';
+  return 'start with a straight line from a green bind point';
 }
 
 // The chain has been erased: let go of whatever it was holding.
 export function release(state, chain) {
   state.chains = state.chains.filter((c) => c.id !== chain.id);
+  if (!chain.holdingId && !chain.chalklingId) return; // a chain with nothing on it yet
   const path = state.paths.find((p) => (chain.holdingId ? p.holdingId === chain.holdingId : p.chalklingId === chain.chalklingId));
   if (path) state.paths = state.paths.filter((p) => p !== path);
 
@@ -168,7 +217,11 @@ export function release(state, chain) {
 export function tidy(state) {
   const liveWards = new Set(state.wards.filter((w) => !w.gone).map((w) => w.id));
   const liveChalklings = new Set(state.chalklings.filter((c) => !c.gone).map((c) => c.id));
-  const alive = (x) => (x.holdingId ? liveWards.has(x.holdingId) : liveChalklings.has(x.chalklingId));
+  const alive = (x) => {
+    if (x.holdingId) return liveWards.has(x.holdingId);
+    if (x.chalklingId) return liveChalklings.has(x.chalklingId);
+    return true; // a chain still waiting for its holding circle
+  };
   for (const ward of state.wards) {
     if (ward.gone && ward.holding && ward.creature.length) {
       emit(state, { type: 'creatureLost', owner: ward.owner, wardId: ward.id, point: ward.center });

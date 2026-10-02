@@ -78,7 +78,7 @@ export class BotController {
           points: stroke.slice(0, Math.max(2, Math.ceil(t * stroke.length))),
         };
       } else {
-        act({ type: 'stroke', points: stroke });
+        act({ type: 'stroke', points: stroke, making: !!stepNow.making });
         done = true;
       }
     } else if (stepNow.kind === 'erase') {
@@ -162,7 +162,7 @@ export class BotController {
   // `hit` is where it would first strike one of our circles (maybe a shield).
   incomingVigor(state, me) {
     for (const v of state.vigors) {
-      if (this.handled.has(v.id) || (v.owner === this.owner && !v.armed)) continue;
+      if (this.handled.has(v.id) || v.owner === this.owner) continue;
       const ahead = { x: v.pos.x + v.vel.x * 3, y: v.pos.y + v.vel.y * 3 };
       if (!hitCircle(v.pos, ahead, me.center, me.radius)) continue;
       let hit = null;
@@ -338,11 +338,12 @@ export class BotController {
 
       return {
         steps: [
-          { kind: 'stroke', points: this.shaky(line(bind, end)) },
-          { kind: 'stroke', points: this.shaky(ring) },
+          // Chalkling mode on for the chain, circle, creature and path.
+          { kind: 'stroke', points: this.shaky(line(bind, end)), making: true },
+          { kind: 'stroke', points: this.shaky(ring), making: true },
           { kind: 'check', test: (s) => s.wards.some((w) => w.owner === this.owner && w.holding) },
           ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true })),
-          { kind: 'stroke', points: this.shaky(line(pathStart, foe.center)) },
+          { kind: 'stroke', points: this.shaky(line(pathStart, foe.center)), making: true },
           { kind: 'erase', along, ms: this.cfg.making.eraseMs + 300 },
         ],
       };

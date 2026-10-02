@@ -129,33 +129,32 @@ test('a Vigor passes out of its own circle without hurting it', () => {
   assert.equal(events(state, 'hit')[0]?.owner, 'right');
 });
 
-test('a Vigor bounces off a wall, loses 30% power, and can then hit its owner', () => {
+test("a wall stops a Vigor (no bouncing) and takes the damage", () => {
   const state = duelWithCircles();
   addStroke(state, 'left', S.line({ x1: 780, y1: 300, x2: 780, y2: 600 }));
+  const wall = state.walls[0];
   const { result } = addStroke(state, 'left', waveRight());
-  const vigor = state.vigors[0];
-  const start = vigor.power;
-  run(state, 30);
-  const [bounce] = events(state, 'bounce');
-  assert.ok(bounce, 'expected a bounce');
-  assert.ok(Math.abs(bounce.power - start * (1 - E.bounceLoss)) < 1e-9);
-  assert.ok(vigor.vel.x < 0, 'now heading back left');
   run(state, 120);
-  const [hit] = events(state, 'hit');
-  assert.equal(hit.owner, 'left', 'armed by the bounce, it hits its own circle');
-  assert.ok(Math.abs(hit.damage - E.vigorDamage * result.quality * (1 - E.bounceLoss)) < 1e-9);
+  const [blocked] = events(state, 'blocked');
+  assert.ok(blocked, 'the wall stopped it');
+  assert.equal(events(state, 'hit').length, 0, 'nothing behind the wall was hit');
+  assert.equal(state.vigors.length, 0, 'the Vigor is gone, not bounced');
+  assert.ok(Math.abs(wall.max - wall.health - E.vigorDamage * result.quality * E.wallDamageFromVigor) < 1e-9);
 });
 
-test('bounce angle off a slanted wall', () => {
+test('waves can break a wall, and then get through', () => {
   const state = duelWithCircles();
-  // A 45° wall: a Vigor heading right should turn to head straight up or down.
-  addStroke(state, 'left', S.line({ x1: 660, y1: 380, x2: 740, y2: 300, steps: 80 }));
-  addStroke(state, 'left', S.wave({ x: 420, y: 340, length: 200, amplitude: 18, cycles: 3, noise: 1 }));
-  const vigor = state.vigors[0];
-  run(state, 40);
-  assert.equal(events(state, 'bounce').length, 1);
-  const speed = Math.hypot(vigor.vel.x, vigor.vel.y);
-  assert.ok(Math.abs(vigor.vel.x) / speed < 0.15, `vel ${vigor.vel.x}, ${vigor.vel.y}`);
+  addStroke(state, 'right', S.line({ x1: 900, y1: 300, x2: 900, y2: 600 }));
+  let shots = 0;
+  while (state.walls.length && shots < 20) {
+    addStroke(state, 'left', waveRight(450, ++shots));
+    run(state, 60);
+  }
+  assert.equal(state.walls.length, 0, `wall still standing after ${shots} waves`);
+  assert.ok(events(state, 'wallBroken').length === 1);
+  addStroke(state, 'left', waveRight(450, 99));
+  run(state, 120);
+  assert.equal(events(state, 'hit').at(-1).owner, 'right', 'the next wave reaches the circle');
 });
 
 test('a Vigor that leaves the board is removed', () => {

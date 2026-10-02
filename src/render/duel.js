@@ -68,7 +68,12 @@ export class DuelRenderer {
     } else if (e.type === 'bounce' || e.type === 'fizzle') {
       fx.push(dust(e.point, now, 8, 40));
     } else if (e.type === 'chain') {
-      fx.push(label(e.point, e.chalklingId ? 'Chained: draw a new path from it' : 'Chain + holding circle', now, R.makingColor));
+      fx.push(label(e.point, e.chalklingId ? 'Chained: draw a new path from it' : 'Chain', now, R.makingColor));
+    } else if (e.type === 'holding') {
+      fx.push(label(e.point, 'Holding circle', now, R.makingColor));
+    } else if (e.type === 'blocked') {
+      fx.push(dust(e.point, now, 14, 60));
+      fx.push({ kind: 'label', text: `-${Math.round(e.damage)}`, x: e.point.x, y: e.point.y - 14, rise: 30, born: now, life: 1100, color: R.dudColor });
     } else if (e.type === 'path') {
       fx.push(label(e.point, e.huntId ? 'Hunt that one!' : 'Path', now, R.makingColor));
     } else if (e.type === 'command') {
@@ -111,7 +116,8 @@ export class DuelRenderer {
     for (const wall of state.walls) {
       const c = this.cached(wall.id, wall.points, wall.id * 7919);
       ctx.save();
-      ctx.globalAlpha = fade(wall.id);
+      // Damaged walls look rubbed thin.
+      ctx.globalAlpha = fade(wall.id) * (0.3 + 0.7 * (wall.health / wall.max));
       ctx.drawImage(c.canvas, c.x, c.y, c.w, c.h);
       ctx.restore();
     }

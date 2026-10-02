@@ -7,12 +7,12 @@
 
 import { CONFIG } from '../config.js';
 import { recognize } from '../recognizer/index.js';
-import { hitSegment, hitCircle, reflect, sectionAt } from './collide.js';
+import { hitSegment, hitCircle, sectionAt } from './collide.js';
 import { buildSections } from './wards.js';
 import { bindAngles, attach } from './bind.js';
 import { emit, otherSide, damageSection, damageWall, damageChalkling } from './damage.js';
 import { stepChalklings } from './chalklings.js';
-import { holdingFor, addCreatureStroke, pathOrigin, addPath, chainToChalkling, holdOnChain, tidy } from './making.js';
+import { addMakingStroke, tidy } from './making.js';
 import { stepErasing } from './erase.js';
 
 export { otherSide };
@@ -52,17 +52,12 @@ export function mainWard(state, side) {
 
 // A duelist draws a stroke. Returns { accepted, result } where result is the
 // recognizer's verdict (turned into a dud if a duel rule rejects it).
-export function addStroke(state, owner, rawPoints) {
+// making: true when the duelist has Chalkling mode on (see making.js).
+export function addStroke(state, owner, rawPoints, { making = false } = {}) {
   if (state.winner || !rawPoints.length) return { accepted: false, result: null };
   const cfg = state.cfg;
   const points = rawPoints.map((p) => ({ x: p.x, y: p.y }));
-
-  // Drawing a chalkling: strokes inside a holding circle are part of the creature,
-  // and a stroke leading out of it (or out of a chained chalkling) is its path.
-  const holding = holdingFor(state, owner, points);
-  if (holding) return addCreatureStroke(state, holding, points);
-  const origin = pathOrigin(state, owner, points);
-  if (origin) return addPath(state, owner, points, origin);
+  if (making) return addMakingStroke(state, owner, points, mainWard(state, owner));
 
   const result = recognize(points);
 
@@ -91,12 +86,11 @@ export function addStroke(state, owner, rawPoints) {
       points,
     };
     if (ward.main) ward.bindAngles = bindAngles(state.bindPoints[owner], owner);
-    else if (!holdOnChain(state, owner, ward, home)) attachTo(state, home, ward);
+    else attachTo(state, home, ward);
     state.wards.push(ward);
   } else if (result.type === 'forbiddance') {
     const health = cfg.wallHealth * result.quality;
     const wall = { id, kind: 'wall', owner, from: result.shape.from, to: result.shape.to, quality: result.quality, health, max: health, points };
-    if (chainToChalkling(state, owner, wall, home)) return { accepted: true, result: { ...result, type: 'chain' }, id };
     attachTo(state, home, wall);
     state.walls.push(wall);
   } else if (result.type === 'vigor') {
@@ -110,9 +104,6 @@ export function addStroke(state, owner, rawPoints) {
       vel: { x: dir.x * cfg.vigorSpeed, y: dir.y * cfg.vigorSpeed },
       launchTip: { ...end },
       launchDir: { ...dir },
-      bounces: 0,
-      // Until it bounces, a Vigor passes through its owner's own circles.
-      armed: false,
       points,
     });
   }
@@ -173,12 +164,12 @@ function moveVigor(state, v, dt) {
     if (hit && (!first || hit.t < first.t)) first = { ...hit, wall };
   }
   for (const ward of state.wards) {
-    if (ward.gone || (ward.owner === v.owner && !v.armed)) continue;
+    if (ward.gone || ward.owner === v.owner) continue; // a Vigor passes through its owner's own circles
     const hit = hitCircle(from, to, ward.center, ward.radius);
     if (hit && (!first || hit.t < first.t)) first = { ...hit, ward };
   }
   for (const c of state.chalklings) {
-    if (c.gone || (c.owner === v.owner && !v.armed)) continue;
+    if (c.gone || c.owner === v.owner) continue; // ...and its owner's own chalklings
     const hit = hitCircle(from, to, c.pos, c.radius);
     if (hit && (!first || hit.t < first.t)) first = { ...hit, chalkling: c };
   }
@@ -193,26 +184,16 @@ function moveVigor(state, v, dt) {
     return;
   }
 
-  if (first.wall) {
-    const wall = first.wall;
-    v.vel = reflect(v.vel, wall.from, wall.to);
-    // Step back off the wall a hair so we don't hit it again next step.
-    const speed = Math.hypot(v.vel.x, v.vel.y);
-    v.pos = { x: first.point.x + (v.vel.x / speed) * 0.5, y: first.point.y + (v.vel.y / speed) * 0.5 };
-    if (cfg.wallDamageFromBounce > 0) damageWall(state, wall, v.power * cfg.wallDamageFromBounce, first.point);
-    v.power *= 1 - cfg.bounceLoss;
-    v.bounces++;
-    v.armed = true;
-    emit(state, { type: 'bounce', id: v.id, point: first.point, power: v.power });
-    if (v.power < cfg.minVigorPower) {
-      v.gone = true;
-      emit(state, { type: 'fizzle', id: v.id, point: first.point });
-    }
-    return;
-  }
-
   v.pos = first.point;
   v.gone = true;
+
+  // Hit a wall: Lines of Vigor don't bounce. The wall stops it and takes the damage.
+  if (first.wall) {
+    const damage = v.power * cfg.wallDamageFromVigor;
+    emit(state, { type: 'blocked', id: v.id, wallId: first.wall.id, owner: first.wall.owner, damage, point: first.point });
+    damageWall(state, first.wall, damage, first.point);
+    return;
+  }
 
   // Hit a chalkling: hurt it, and the Vigor is spent.
   if (first.chalkling) {

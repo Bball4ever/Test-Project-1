@@ -1,5 +1,6 @@
 // Everything a duelist can do, as plain data "actions":
-//   { type: 'stroke', points: [{x, y}, ...] }               draw one line
+//   { type: 'stroke', points: [{x, y}, ...], making }       draw one line
+//                                   (making: true when Chalkling mode is on)
 //   { type: 'erase', phase: 'start'|'move'|'stop', at: {x, y} }  rub a line out
 //   { type: 'order', order: 'attack' | 'guard' }             command your chalklings
 //
@@ -13,7 +14,7 @@ import { addStroke, setOrder, ORDERS } from './duel.js';
 import { eraseAction } from './erase.js';
 
 export function applyAction(state, side, action) {
-  if (action.type === 'stroke') return addStroke(state, side, action.points);
+  if (action.type === 'stroke') return addStroke(state, side, action.points, { making: !!action.making });
   if (action.type === 'erase') return eraseAction(state, side, action.phase, action.at);
   if (action.type === 'order') {
     setOrder(state, side, action.order);
@@ -41,7 +42,7 @@ function cleanPoints(raw) {
 export function sanitizeAction(raw) {
   if (raw?.type === 'stroke') {
     const points = cleanPoints(raw.points);
-    return points && { type: 'stroke', points };
+    return points && { type: 'stroke', points, making: raw.making === true };
   }
   if (raw?.type === 'erase' && ['start', 'move', 'stop'].includes(raw.phase)) {
     const at = raw.at ? cleanPoints([raw.at])?.[0] : null;

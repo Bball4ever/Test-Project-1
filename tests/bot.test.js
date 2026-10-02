@@ -116,5 +116,5 @@ test('a professor walls off an incoming Vigor', () => {
     step(state);
   }
   assert.ok(state.walls.filter((w) => w.owner === 'right').length > wallsBefore, 'drew a wall');
-  assert.ok(state.events.some((e) => e.type === 'bounce'), 'the wave bounced off it');
+  assert.ok(state.events.some((e) => e.type === 'blocked'), 'the wall stopped the wave');
 });
