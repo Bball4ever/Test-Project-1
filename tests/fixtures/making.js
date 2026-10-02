@@ -48,16 +48,11 @@ export function drawPath(state, side, from, r, to) {
   return addStroke(state, side, line(start, to), MAKING);
 }
 
-// Rub the eraser at `at` for `seconds`, then lift it.
+// Click the eraser at `at`, then let `seconds` pass.
 export function erase(state, side, at, seconds = 3.1) {
-  const act = (phase) => applyAction(state, side, { type: 'erase', phase, at });
-  act('start');
-  const steps = Math.round((seconds * 1000) / state.cfg.stepMs);
-  for (let i = 0; i < steps; i++) {
-    if (i % 6 === 0) act('move');
-    step(state);
-  }
-  act('stop');
+  const result = applyAction(state, side, { type: 'erase', at });
+  run(state, seconds);
+  return result;
 }
 
 // All five steps. Returns the new chalkling (or null).

@@ -113,16 +113,21 @@ test('there is no shortcut: a "make a chalkling" action is refused', () => {
 
 // --- Erasing --------------------------------------------------------------------------------
 
-test('erasing takes 3 seconds in a row', () => {
+test('a line clicked with the eraser is gone 3 seconds later, not before', () => {
   const state = duel();
   addStroke(state, 'left', S.line({ x1: 600, y1: 200, x2: 600, y2: 450 }));
   const at = { x: 600, y: 300 };
-  erase(state, 'left', at, 2.5);
-  erase(state, 'left', at, 2.5);
-  assert.equal(state.walls.length, 1, 'two 2.5 s rubs do not add up');
-  erase(state, 'left', at, 3.1);
-  assert.equal(state.walls.length, 0, '3 s in a row erases it');
+  assert.equal(erase(state, 'left', at, 2.8).accepted, true);
+  assert.equal(state.walls.length, 1, 'still there after 2.8 s');
+  run(state, 0.3);
+  assert.equal(state.walls.length, 0, 'gone after 3 s');
   assert.ok(state.events.some((e) => e.type === 'erased'));
+});
+
+test('clicking empty board with the eraser does nothing', () => {
+  const state = duel();
+  assert.equal(erase(state, 'left', { x: 600, y: 800 }).accepted, false);
+  assert.equal(state.erasing.left, null);
 });
 
 test('you can only erase your own lines, and never your main circle', () => {

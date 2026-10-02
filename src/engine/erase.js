@@ -1,12 +1,9 @@
-// Erasing: rub a line for 3 seconds in a row and it's gone.
+// Erasing: click one of your lines with the eraser and 3 seconds later it's gone.
 //
-// While the eraser is down, the player's controller keeps telling the engine
-// where it is (about 10 times a second). The engine times it, so nobody can
-// cheat the 3 seconds, even online. Lifting the eraser, or moving off the line
-// for longer than a moment, starts the count again.
-//
+// The engine does the timing, so nobody can cheat the 3 seconds, even online.
 // You can erase your own walls, chains, paths and small circles, but never
-// your main circle, and never anything of your opponent's.
+// your main circle, and never anything of your opponent's. Each duelist
+// erases one line at a time; clicking another line starts over on that one.
 
 import { closestOnSegment } from './collide.js';
 import { emit } from './damage.js';
@@ -34,43 +31,31 @@ export function erasableAt(state, side, at) {
   return best?.thing ?? null;
 }
 
-// phase: 'start' | 'move' | 'stop'. at: where the eraser is.
-export function eraseAction(state, side, phase, at) {
-  if (phase === 'stop' || !at) {
-    state.erasing[side] = null;
-    return { accepted: true, result: null };
-  }
-  const target = erasableAt(state, side, at);
-  const current = state.erasing[side];
-  if (!target) {
-    if (current) current.at = at; // off the line: the grace timer in step() decides
-    return { accepted: true, result: null };
-  }
-  if (!current || current.targetId !== target.id) {
-    state.erasing[side] = { targetId: target.id, kind: target.kind, startTick: state.tick, lastTick: state.tick, at };
-  } else {
-    current.lastTick = state.tick;
-    current.at = at;
-  }
+// The eraser is clicked at `at`. If one of our lines is there, it starts
+// being erased. Returns { accepted } so the controller knows it hit a line.
+export function eraseAction(state, side, at) {
+  const target = at && erasableAt(state, side, at);
+  if (!target) return { accepted: false, result: null };
+  state.erasing[side] = { targetId: target.id, kind: target.kind, startTick: state.tick, at, progress: 0 };
+  emit(state, { type: 'eraseStart', owner: side, id: target.id, point: at });
   return { accepted: true, result: null };
 }
 
-// Called every engine step: finish or cancel erasing.
+// Called every engine step: finish erasing once 3 seconds have passed.
 export function stepErasing(state) {
-  const mk = state.makeCfg;
   const ms = state.cfg.stepMs;
   for (const side of ['left', 'right']) {
     const e = state.erasing[side];
     if (!e) continue;
-    if ((state.tick - e.lastTick) * ms > mk.eraseGraceMs) {
-      state.erasing[side] = { ...e, targetId: null, kind: null }; // wandered off: start again
+    const stillThere = [...state.walls, ...state.chains, ...state.paths, ...state.wards].some((t) => t.id === e.targetId && !t.gone);
+    if (!stillThere) {
+      state.erasing[side] = null; // it was destroyed some other way
       continue;
     }
-    if (!e.targetId) continue;
-    e.progress = Math.min(1, ((state.tick - e.startTick) * ms) / mk.eraseMs);
+    e.progress = Math.min(1, ((state.tick - e.startTick) * ms) / state.makeCfg.eraseMs);
     if (e.progress >= 1) {
       removeThing(state, side, e.targetId);
-      state.erasing[side] = { at: e.at, targetId: null, kind: null };
+      state.erasing[side] = null;
     }
   }
 }

@@ -153,8 +153,7 @@ export const CONFIG = {
   //   1. a chain from a bind point   2. a holding circle on the chain's end
   //   3. the creature inside the circle   4. a path out of it   5. erase the chain
   making: {
-    eraseMs: 3000, // rubbing a line out takes this long, without stopping
-    eraseGraceMs: 400, // rubbing back and forth may leave the line this long without restarting
+    eraseMs: 3000, // a line clicked with the eraser disappears this long afterwards
     eraseReach: 24, // the eraser counts as "on" a line within this distance
     insideFraction: 0.75, // a stroke this much inside a holding circle is part of the creature
     pathStartReach: 24, // a path must start this close to the holding circle's line (or the chalkling)

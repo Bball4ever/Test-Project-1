@@ -14,6 +14,7 @@
 import { CONFIG } from './config.js';
 import { createDuel, step, mainWard, SIDES } from './engine/duel.js';
 import { applyAction } from './engine/actions.js';
+import { erasableAt } from './engine/erase.js';
 import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
 import { BotController } from './controllers/bot.js';
@@ -60,18 +61,23 @@ const human = new HumanController(canvas, {
     if (humans.length === 1) return humans[0];
     return point.x < CONFIG.engine.world.width / 2 ? 'left' : 'right';
   },
-  // With the eraser on, pressing down starts rubbing instead of drawing.
+  // With the eraser on, a click erases the line under it (after 3 seconds)
+  // instead of drawing, and the eraser turns itself off.
   onBegin(stroke) {
-    if (!session.seats[stroke.owner].eraser) return;
-    stroke.erasing = true;
-    act(stroke.owner, { type: 'erase', phase: 'start', at: stroke.points[0] });
-  },
-  onStroke(stroke) {
-    if (!session?.state) return;
-    if (stroke.erasing) {
-      act(stroke.owner, { type: 'erase', phase: 'stop', at: stroke.points[stroke.points.length - 1] });
+    const seat = session.seats[stroke.owner];
+    if (!seat.eraser) return;
+    stroke.erasing = true; // this press is the eraser, not a stroke
+    const at = stroke.points[0];
+    if (!erasableAt(session.state, stroke.owner, at)) {
+      showToast('Click one of your own lines to erase it.');
       return;
     }
+    act(stroke.owner, { type: 'erase', at });
+    seat.eraser = false;
+    updateControls();
+  },
+  onStroke(stroke) {
+    if (!session?.state || stroke.erasing) return;
     if (session.state.winner) return;
     if (session.net) session.net.send({ t: 'live', points: null });
     const making = session.seats[stroke.owner].making;
@@ -277,7 +283,6 @@ function frame(now) {
       }
       for (const e of state.events.splice(0)) onEvent(e, now);
     }
-    keepErasing(now);
     sendLiveStroke(now);
     if (state.winner && !endShown && now - breachAt > 1400) showEnd();
   }
@@ -311,17 +316,6 @@ function predicted(state, ms) {
   const dt = Math.min(ms, 100) / 1000;
   if (!dt || state.winner) return state;
   return { ...state, vigors: state.vigors.map((v) => ({ ...v, pos: { x: v.pos.x + v.vel.x * dt, y: v.pos.y + v.vel.y * dt } })) };
-}
-
-// While the eraser is held down, keep telling the engine where it is (about
-// 10 times a second), even if it's held still. The engine does the timing.
-let eraseSentAt = 0;
-function keepErasing(now) {
-  if (now - eraseSentAt < 100) return;
-  eraseSentAt = now;
-  for (const s of human.liveStrokes()) {
-    if (s.erasing) act(s.owner, { type: 'erase', phase: 'move', at: s.points[s.points.length - 1] });
-  }
 }
 
 // --- Eraser and orders ----------------------------------------------------------
@@ -409,10 +403,15 @@ function duelHint() {
   const where = mode === 'online' ? `You are on the ${side.toUpperCase()} half. ` : '';
   if (state.chalk && state.chalk[side] < CONFIG.chalk.tooLittle) return `${where}You're out of chalk. Your chalklings and waves already out there are all you have left.`;
   if (state.chalk && state.chalk[side] < 500) return `${where}Almost out of chalk: ${Math.round(state.chalk[side])} left. Only short strokes will fit now.`;
-  if (seats[side].eraser) return `${where}Eraser on: rub one of your lines for 3 seconds in a row to remove it. Press E or the button to stop erasing.`;
+  if (seats[side].eraser) return `${where}Eraser on: click one of your lines. It disappears 3 seconds later. (Press E again to cancel.)`;
+  const erasing = state.erasing?.[side];
+  if (erasing?.targetId) {
+    const secs = Math.max(0, (CONFIG.making.eraseMs * (1 - (erasing.progress ?? 0))) / 1000).toFixed(1);
+    return `${where}Erasing${erasing.kind === 'chain' ? ' the chain' : ''}... ${secs} s to go.`;
+  }
   if (seats[side].making) return where + makingHint(state, side);
   if (state.chains.some((c) => c.owner === side && (c.holdingId || c.chalklingId))) {
-    return `${where}To set your chalkling loose, erase its chain: Eraser (E), then rub the chain for 3 seconds.`;
+    return `${where}To set your chalkling loose, erase its chain: press Eraser (E), then click the chain.`;
   }
   const template = practiceTemplate();
   const main = mainWard(state, side);
@@ -438,7 +437,7 @@ function makingHint(state, side) {
   }
   const held = state.chalklings.find((c) => c.owner === side && c.mode === 'held');
   if (held && !state.paths.some((p) => p.chalklingId === held.id)) return `${steps} Chained! Draw a new path from your chalkling.`;
-  if (state.chains.some((c) => c.owner === side)) return `${steps} Done! Turn it off (M), then erase the chain (E, rub 3 seconds) to set it loose.`;
+  if (state.chains.some((c) => c.owner === side)) return `${steps} Done! Turn it off (M), then erase the chain (E, then click the chain) to set it loose.`;
   if (state.chalklings.some((c) => c.owner === side && c.mode === 'waiting')) {
     return `${steps} 1. Draw a straight line from a green bind point (or from one to your waiting chalkling to give it a new command).`;
   }

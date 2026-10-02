@@ -139,19 +139,9 @@ test('erasing works online, and the server does the timing', async () => {
     a.send(stroke(S.line({ x1: 600, y1: 200, x2: 600, y2: 450 })));
     await b.waitFor(() => b.state?.walls.length === 1);
 
-    const rub = (phase) => a.send({ t: 'action', action: { type: 'erase', phase, at: { x: 600, y: 300 } } });
-    rub('start');
-    const started = Date.now();
-    while (Date.now() - started < 1500) {
-      rub('move');
-      await new Promise((r) => setTimeout(r, 100));
-    }
+    a.send({ t: 'action', action: { type: 'erase', at: { x: 600, y: 300 } } });
+    await new Promise((r) => setTimeout(r, 1500));
     assert.equal(b.state.walls.length, 1, 'not gone after 1.5 s');
-    while (Date.now() - started < 3400) {
-      rub('move');
-      await new Promise((r) => setTimeout(r, 100));
-    }
-    rub('stop');
     await b.waitFor(() => b.state.walls.length === 0);
     a.ws.close();
     b.ws.close();

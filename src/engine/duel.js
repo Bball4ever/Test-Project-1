@@ -44,7 +44,7 @@ export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, m
     chalklings: [], // Lines of Making, walking about
     chains: [], // chains from bind points to holding circles or chalklings
     paths: [], // paths drawn for chalklings, waiting for their chain to be erased
-    erasing: { left: null, right: null }, // what each side is rubbing out right now
+    erasing: { left: null, right: null }, // the line each side is erasing right now
     events: [], // things that just happened, for the renderer's effects
     nextId: 1,
   };

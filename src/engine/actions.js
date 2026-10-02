@@ -1,7 +1,7 @@
 // Everything a duelist can do, as plain data "actions":
 //   { type: 'stroke', points: [{x, y}, ...], making }       draw one line
 //                                   (making: true when Chalkling mode is on)
-//   { type: 'erase', phase: 'start'|'move'|'stop', at: {x, y} }  rub a line out
+//   { type: 'erase', at: {x, y} }                            erase the line there (takes 3 s)
 //   { type: 'order', order: 'attack' | 'guard' }             command your chalklings
 //
 // There's deliberately no "make a chalkling" action: chalklings can only be
@@ -15,7 +15,7 @@ import { eraseAction } from './erase.js';
 
 export function applyAction(state, side, action) {
   if (action.type === 'stroke') return addStroke(state, side, action.points, { making: !!action.making });
-  if (action.type === 'erase') return eraseAction(state, side, action.phase, action.at);
+  if (action.type === 'erase') return eraseAction(state, side, action.at);
   if (action.type === 'order') {
     setOrder(state, side, action.order);
     return { accepted: true, result: null };
@@ -44,9 +44,9 @@ export function sanitizeAction(raw) {
     const points = cleanPoints(raw.points);
     return points && { type: 'stroke', points, making: raw.making === true };
   }
-  if (raw?.type === 'erase' && ['start', 'move', 'stop'].includes(raw.phase)) {
+  if (raw?.type === 'erase') {
     const at = raw.at ? cleanPoints([raw.at])?.[0] : null;
-    return { type: 'erase', phase: raw.phase, at };
+    return at ? { type: 'erase', at } : null;
   }
   if (raw?.type === 'order' && ORDERS.includes(raw.order)) return { type: 'order', order: raw.order };
   return null;

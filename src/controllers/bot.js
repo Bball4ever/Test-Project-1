@@ -61,7 +61,7 @@ export class BotController {
     return null;
   }
 
-  // A plan is a list of steps: strokes to draw, lines to rub out, and checks.
+  // A plan is a list of steps: strokes to draw, lines to erase, and checks.
   continuePlan(state, act, now) {
     const plan = this.plan;
     const stepNow = plan.steps[plan.index];
@@ -85,17 +85,14 @@ export class BotController {
         done = true;
       }
     } else if (stepNow.kind === 'erase') {
-      // Rub back and forth along the line for long enough, then lift.
+      // Click the line with the eraser, then wait the 3 seconds for it to go.
       const elapsed = now - plan.startedAt;
-      const at = stepNow.along[Math.floor(elapsed / 100) % stepNow.along.length];
-      if (!plan.rubbing) {
-        act({ type: 'erase', phase: 'start', at });
-        plan.rubbing = true;
-      } else if (state.tick % 6 === 0) act({ type: 'erase', phase: 'move', at });
-      live = { owner: this.owner, eraser: at };
+      if (!plan.erasing) {
+        act({ type: 'erase', at: stepNow.at });
+        plan.erasing = true;
+      }
       if (elapsed >= stepNow.ms) {
-        act({ type: 'erase', phase: 'stop', at });
-        plan.rubbing = false;
+        plan.erasing = false;
         done = true;
       }
     } else if (stepNow.kind === 'check') {
@@ -311,7 +308,7 @@ export class BotController {
 
   // Make a chalkling the book way: a chain from the bind point facing down
   // (or up), a holding circle on its end, the creature inside, a path to the
-  // enemy circle, then rub the chain out to set it loose.
+  // enemy circle, then erase the chain to set it loose.
   chalklingPlan(state, me, foe) {
     if (state.chains.some((c) => c.owner === this.owner)) return null; // one at a time
     const r = 60;
@@ -337,7 +334,6 @@ export class BotController {
       const toEnemy = norm({ x: foe.center.x - center.x, y: foe.center.y - center.y });
       const pathStart = { x: center.x + toEnemy.x * r * 0.92, y: center.y + toEnemy.y * r * 0.92 };
       const chainMid = { x: (bind.x + end.x) / 2, y: (bind.y + end.y) / 2 };
-      const along = [-0.3, 0, 0.3, 0].map((f) => ({ x: chainMid.x + dir.x * f * 60, y: chainMid.y + dir.y * f * 60 }));
 
       return {
         steps: [
@@ -347,7 +343,7 @@ export class BotController {
           { kind: 'check', test: (s) => s.wards.some((w) => w.owner === this.owner && w.holding) },
           ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true })),
           { kind: 'stroke', points: this.shaky(line(pathStart, foe.center)), making: true },
-          { kind: 'erase', along, ms: this.cfg.making.eraseMs + 300 },
+          { kind: 'erase', at: chainMid, ms: this.cfg.making.eraseMs + 300 },
         ],
       };
     }

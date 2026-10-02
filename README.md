@@ -38,7 +38,7 @@ Press **Chalkling** (or M) first: while it's on, your strokes are chalkling part
 2. **Holding circle:** draw a circle touching the chain's far end.
 3. **Creature:** draw it inside the holding circle, in as many strokes as you like.
 4. **Path:** draw a line from the circle to where it should go. It follows the path, going around any wall in its way (or chewing through if there's no way round), and attacks the enemy circle if the path leads there. **End the path on an enemy chalkling** and yours hunts that one until it's dead.
-5. **Release:** turn Chalkling off, turn on the **Eraser** and rub out the chain for 3 seconds in a row. The chalkling breaks out.
+5. **Release:** turn Chalkling off, press **Eraser** and click the chain. 3 seconds later the chain is gone and the chalkling breaks out.
 
 Any chalkling attacks an enemy chalkling that comes close, then carries on with what it was doing (a hunter stays on its target). Chalklings find their own way: they walk **around** walls and circles (using A* route-finding), and only chew through a wall if there's no way round. The enemy circle they're attacking is never avoided: they go straight for it.
 
@@ -52,7 +52,7 @@ When a path ends, the chalkling follows the **Attack / Guard** buttons. After a 
 
 ## Erasing
 
-Press **Eraser** (or E), then rub one of your own lines for **3 seconds in a row**. If you lift off or move away, the count starts again. You can erase your walls, chains, paths and small circles, but never your main circle or anything of your opponent's.
+Press **Eraser** (or E), then click one of your own lines. The eraser turns itself off, and **3 seconds later** the line is gone (it fades while you wait, and you can keep drawing). You can erase your walls, chains, paths and small circles, but never your main circle or anything of your opponent's.
 
 ## Modes
 
@@ -66,7 +66,7 @@ Press **Eraser** (or E), then rub one of your own lines for **3 seconds in a row
 | Key | Button | Does |
 | --- | --- | --- |
 | M | Chalkling | Turn Chalkling mode on or off (chain, circle, creature, path). |
-| E | Eraser | Turn the eraser on or off. Rub a line for 3 seconds to remove it. |
+| E | Eraser | Turn the eraser on, then click a line: it's gone 3 seconds later. |
 | A / G | Attack / Guard | Orders for chalklings that have finished their paths. |
 | D | Debug | Shows the numbers behind every score, section health, and chalkling stats. |
 | S | Save stroke | Copies your last stroke as JSON, to turn into a test. |
