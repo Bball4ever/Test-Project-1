@@ -183,6 +183,37 @@ kbd {
   flex-wrap: wrap;
 }
 
+.note {
+  font-size: 14px !important;
+  opacity: 0.85;
+}
+
+.note.warn {
+  color: rgb(240, 180, 160);
+}
+
+.note:empty {
+  display: none;
+}
+
+#room-code {
+  width: 90px;
+  font: 600 16px ui-monospace, monospace;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  text-align: center;
+  padding: 8px;
+  color: inherit;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .pick:disabled {
   opacity: 0.4;
   cursor: not-allowed;

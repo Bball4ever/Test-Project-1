@@ -46,6 +46,8 @@
           <span>Opponent:</span>
           <button class="pick selected" data-group="mode" data-value="dummy">Practice dummy</button>
           <button class="pick" data-group="mode" data-value="bot">Bot</button>
+          <button class="pick" data-group="mode" data-value="local">Same screen</button>
+          <button class="pick" data-group="mode" data-value="online">Online</button>
         </div>
         <div class="choice" data-show="bot">
           <span>Bot level:</span>
@@ -59,16 +61,34 @@
           <button class="pick" data-group="dummy" data-value="sloppy">Sloppy</button>
         </div>
         <div class="choice">
-          <span>Your bind points:</span>
+          <span>Bind points:</span>
           <button class="pick" data-group="bind" data-value="2">2</button>
           <button class="pick selected" data-group="bind" data-value="4">4</button>
           <button class="pick" data-group="bind" data-value="6">6</button>
         </div>
-        <div class="choice wrap" id="template-choices">
+        <div class="choice wrap" id="template-choices" data-show="dummy bot">
           <span>Trace a defense:</span>
           <button class="pick selected" data-group="template" data-value="">None</button>
         </div>
-        <button id="btn-start" class="primary">Start duel</button>
+        <p class="note" data-show="local">
+          Two players share one touchscreen: left player draws on the left half, right player on the right, both at
+          the same time.
+        </p>
+        <p class="note warn" id="touch-note" hidden>
+          Same-screen play needs a touchscreen, and this device doesn't seem to have one. With one mouse you can only
+          take turns.
+          <button id="btn-try-anyway">Try anyway</button>
+        </p>
+        <div class="choice wrap" data-show="online">
+          <button id="btn-create" class="primary">Create room</button>
+          <span>or</span>
+          <input id="room-code" maxlength="4" placeholder="CODE" autocomplete="off" spellcheck="false" />
+          <button id="btn-join">Join</button>
+        </div>
+        <p class="note" id="online-status" data-show="online"></p>
+        <div class="choice" data-show="dummy bot local">
+          <button id="btn-start" class="primary">Start duel</button>
+        </div>
       </div>
     </div>
 
@@ -78,7 +98,7 @@
         <p id="end-stats"></p>
         <div class="choice">
           <button id="btn-rematch" class="primary">Rematch</button>
-          <button id="btn-change">Change dummy</button>
+          <button id="btn-menu">Main menu</button>
         </div>
       </div>
     </div>
