@@ -6,11 +6,12 @@
 
 import { sectionAt } from './collide.js';
 
-// Angles of the bind points. The first one faces the opponent:
-// the left duelist faces right (angle 0), the right duelist faces left (angle π).
-export function bindAngles(count, side) {
-  const facing = side === 'left' ? 0 : Math.PI;
-  return Array.from({ length: count }, (_, k) => facing + (k * 2 * Math.PI) / count);
+// Angles of the bind points. The first one faces the way the duelist faces
+// (`facing`, a direction): toward the middle of the board. In a 2-player duel
+// the left duelist faces right (angle 0), the right duelist faces left (π).
+export function bindAngles(count, facing) {
+  const start = Math.atan2(facing.y, facing.x);
+  return Array.from({ length: count }, (_, k) => start + (k * 2 * Math.PI) / count);
 }
 
 export function bindPointPositions(ward) {

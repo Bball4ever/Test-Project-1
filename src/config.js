@@ -79,7 +79,14 @@ export const CONFIG = {
     // The renderer scales it to fit.
     world: { width: 1600, height: 900 },
     stepMs: 1000 / 60, // the engine moves forward in steps of exactly this long
-    sideMargin: 8, // how far past the center line a stroke may stray
+    sideMargin: 8, // how far past the border of your territory a stroke may stray
+    // With 3 to 10 players the board is a bigger square and the players' homes
+    // sit in a ring (see engine/territory.js).
+    territory: {
+      spacing: 760, // about this far between neighbours' homes
+      minRing: 450, // the ring is at least this big (so 3 players aren't cramped)
+      margin: 520, // room between the ring and the board's edge
+    },
 
     // --- Lines of Warding ---
     sections: 24, // arc sections per circle, each with its own health
@@ -303,7 +310,7 @@ export const CONFIG = {
       },
       grandmaster: {
         name: 'Grand master',
-        noise: 0.9, speed: 850, think: [500, 950],
+        noise: 0.7, speed: 1050, think: [320, 620],
         defendChance: 0.98, counterChance: 0.98, aim: 'weakest',
         makeChance: 0.26, creature: 'beetle', holdRadius: 80,
         defense: 'full', powers: 'smart', detailScreen: true, interrupts: true, multitask: true,
@@ -326,7 +333,19 @@ export const CONFIG = {
     dudColor: '240, 150, 130',
     boundColor: '150, 220, 170', // bind points and bound lines
     makingColor: '190, 175, 255', // a chalkling still being drawn
-    teamColors: { left: '150, 220, 170', right: '240, 150, 130' },
+    // Each player's colour: you ('left'), the first opponent ('right'), then p2 to p9.
+    teamColors: {
+      left: '150, 220, 170',
+      right: '240, 150, 130',
+      p2: '130, 180, 250',
+      p3: '240, 215, 120',
+      p4: '200, 160, 240',
+      p5: '120, 220, 225',
+      p6: '245, 175, 100',
+      p7: '240, 150, 200',
+      p8: '190, 230, 110',
+      p9: '215, 215, 215',
+    },
     chalkWidth: 4, // px
     chalkStrands: 4, // thin lines layered to make one chalk line
     chalkGrain: 2, // px per chalk texture step (smaller = finer grain, more work)

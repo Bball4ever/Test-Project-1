@@ -10,7 +10,8 @@ import { CONFIG } from '../config.js';
 import { makeRng } from '../random.js';
 import { pathLength, resample } from '../recognizer/clean.js';
 import { hitSegment, hitCircle } from '../engine/collide.js';
-import { mainWard, otherSide, wallCount } from '../engine/duel.js';
+import { mainWard, wallCount } from '../engine/duel.js';
+import { depthIn, facingOf } from '../engine/territory.js';
 import { findDefense, layoutDefense } from '../data/defenses.js';
 import { stickFigure, beetle, urchin, turtle, mirror, fitInside } from '../data/creatures.js';
 import { POWERS } from '../engine/powers.js';
@@ -30,10 +31,28 @@ export class BotController {
     this.waitUntil = 500 + this.thinkTime(); // ms of duel time
     this.handled = new Set(); // ids of things it has already reacted to
     this.defenseDone = 0; // how many parts of its defense it has built
-    const mid = cfg.engine.world.width / 2;
-    this.dirToEnemy = owner === 'left' ? 1 : -1;
-    this.home = { x: mid - this.dirToEnemy * 400, y: 450 };
-    this.launchX = mid - this.dirToEnemy * 110; // where its waves are aimed from
+    this.state = null; // the duel it's in (set on the first update)
+  }
+
+  // Learn where we are on the board: our home, and which way we face (toward
+  // the middle). Down-the-side is the direction across that, pointing down
+  // the screen when it can (so a 2-player duel is laid out as it always was).
+  setup(state) {
+    this.state = state;
+    this.home = state.homes[this.owner];
+    this.facing = facingOf(state, this.owner);
+    const across = { x: -this.facing.y, y: this.facing.x };
+    this.across = across.y < 0 || (across.y === 0 && across.x < 0) ? { x: -across.x, y: -across.y } : across;
+  }
+
+  // The enemy circle to attack: the nearest one still standing.
+  targetFoe(state) {
+    let best = null;
+    for (const w of state.wards) {
+      if (!w.main || w.gone || w.owner === this.owner) continue;
+      if (!best || dist(this.home, w.center) < dist(this.home, best.center)) best = w;
+    }
+    return best;
   }
 
   thinkTime() {
@@ -44,7 +63,8 @@ export class BotController {
   // Called every engine step. Returns what it's drawing right now (for the
   // renderer), or null.
   update(state, act) {
-    if (state.winner) return null;
+    if (state.winner || state.out.includes(this.owner)) return null;
+    if (this.state !== state) this.setup(state);
     const now = state.timeMs;
     if (this.plan) {
       // Top levels drop what they're drawing to block an incoming wave, then
@@ -134,7 +154,7 @@ export class BotController {
   }
 
   attackWhileErasing(state, now) {
-    const foe = mainWard(state, otherSide(this.owner));
+    const foe = this.targetFoe(state);
     const wave = foe && this.vigorPlan(state, foe);
     const cost = wave?.steps.reduce((sum, s) => sum + pathLength(s.points), 0) ?? Infinity;
     if (cost > state.chalk[this.owner]) return;
@@ -186,12 +206,20 @@ export class BotController {
       }
     }
 
+    // A chain left over from a chalkling that didn't work out (say, it ended
+    // up on one of our own chalklings): rub it out, or it blocks new ones.
+    const stray = state.chains.find((c) => c.owner === this.owner);
+    if (stray) {
+      const at = { x: (stray.from.x + stray.to.x) / 2, y: (stray.from.y + stray.to.y) / 2 };
+      return { steps: [{ kind: 'erase', at, ms: this.cfg.making.eraseMs + 300 }] };
+    }
+
     // 3. Build its defense, a piece at a time.
     const defense = this.defensePlan(state, me);
     if (defense) return defense;
 
     // 4. Attack.
-    const foe = mainWard(state, otherSide(this.owner));
+    const foe = this.targetFoe(state);
     if (!foe) return null;
     if (this.rng() < this.level.makeChance) return this.chalklingPlan(state, me, foe) ?? this.vigorPlan(state, foe);
     return this.vigorPlan(state, foe) ?? this.chalklingPlan(state, me, foe);
@@ -229,12 +257,13 @@ export class BotController {
 
   circlePlan() {
     const r = this.cfg.bot.homeRadius;
-    const cy = this.home.y + (this.rng() - 0.5) * 60;
-    const start = this.owner === 'left' ? 0 : Math.PI;
+    const shift = (this.rng() - 0.5) * 60; // a little to one side of home
+    const center = { x: this.home.x + this.across.x * shift, y: this.home.y + this.across.y * shift };
+    const start = Math.atan2(this.facing.y, this.facing.x); // start on the side facing the middle
     const points = [];
     for (let i = 0; i <= 92; i++) {
       const a = start + (i / 88) * 2 * Math.PI;
-      points.push({ x: this.home.x + r * Math.cos(a), y: cy + r * Math.sin(a) });
+      points.push({ x: center.x + r * Math.cos(a), y: center.y + r * Math.sin(a) });
     }
     return this.strokePlan(points);
   }
@@ -273,7 +302,7 @@ export class BotController {
     const want = { none: 0, shield: 1, full: 2 }[this.level.defense];
     if (this.defenseDone >= want) return null;
     if (wallCount(state, this.owner) >= this.cfg.engine.maxWalls) return null;
-    const parts = layoutDefense(findDefense('placeholder'), me, this.owner);
+    const parts = layoutDefense(findDefense('placeholder'), me, this.owner === 'left' || this.owner === 'right' ? this.owner : this.facing);
     const part = parts[this.defenseDone++];
     if (part.type === 'circle') {
       const points = [];
@@ -286,25 +315,50 @@ export class BotController {
     return this.strokePlan(line(part.from, part.to));
   }
 
+  // Waves are launched from near the edge of our territory, toward the foe:
+  // 110 to 150 inside the border, and up to 330 to either side.
   vigorPlan(state, foe) {
     const targets = this.pickTargets(foe);
+    const toward = norm({ x: state.homes[foe.owner].x - this.home.x, y: state.homes[foe.owner].y - this.home.y });
+    const across = { x: -toward.y, y: toward.x };
+    const side = across.y < 0 || (across.y === 0 && across.x < 0) ? { x: -across.x, y: -across.y } : across;
     for (const target of targets) {
       for (let tries = 0; tries < 4; tries++) {
-        const tip = {
-          x: this.launchX - this.dirToEnemy * this.rng() * 40,
-          y: Math.max(120, Math.min(780, target.y + (this.rng() - 0.5) * 260)),
-        };
+        const base = this.pointAtDepth(state, toward, 110 + this.rng() * 40);
+        const off = Math.max(-330, Math.min(330, (target.x - base.x) * side.x + (target.y - base.y) * side.y + (this.rng() - 0.5) * 260));
+        const tip = { x: base.x + side.x * off, y: base.y + side.y * off };
         const dir = norm({ x: target.x - tip.x, y: target.y - tip.y });
         if (this.level.aim === 'random' || this.laneIsClear(state, foe, tip, target, dir)) return this.wavePlan(tip, dir);
       }
     }
+    // With several players, if every lane is blocked, throw a curved wave
+    // anyway: it smashes the walls in the way (curved waves are best at that).
+    if (state.players.length > 2 && targets.length) {
+      const base = this.pointAtDepth(state, toward, 130);
+      if (this.onMySide(base)) return this.wavePlan(base, norm({ x: targets[0].x - base.x, y: targets[0].y - base.y }));
+    }
     return null;
+  }
+
+  // The point straight out from home toward `dir` that is `depth` inside our
+  // territory (found by halving the search range).
+  pointAtDepth(state, dir, depth) {
+    let lo = 0;
+    let hi = Math.hypot(state.cfg.world.width, state.cfg.world.height);
+    for (let i = 0; i < 40; i++) {
+      const mid = (lo + hi) / 2;
+      const p = { x: this.home.x + dir.x * mid, y: this.home.y + dir.y * mid };
+      if (depthIn(state, this.owner, p).depth > depth) lo = mid;
+      else hi = mid;
+    }
+    return { x: this.home.x + dir.x * lo, y: this.home.y + dir.y * lo };
   }
 
   // Which spots on the enemy circle to aim at, best first.
   pickTargets(foe) {
     const n = foe.sections.length;
-    const facing = this.owner === 'left' ? Math.PI : 0; // the side of their circle facing us
+    const theirHome = this.state.homes[foe.owner];
+    const facing = Math.atan2(this.home.y - theirHome.y, this.home.x - theirHome.x); // the side of their circle facing us
     const options = [];
     foe.sections.forEach((s, k) => {
       const a = ((k + 0.5) / n) * Math.PI * 2;
@@ -360,13 +414,22 @@ export class BotController {
     if (state.chains.some((c) => c.owner === this.owner)) return null; // one at a time
     const r = this.level.holdRadius ?? 60;
     for (const sign of [1, -1]) {
-      const angle = me.bindAngles.find((a) => Math.abs(Math.sin(a) - sign) < 0.01);
+      // The bind point pointing most nearly sideways (across the way we face):
+      // in a 2-player duel, straight down, then straight up.
+      const want = { x: this.across.x * sign, y: this.across.y * sign };
+      const angle = me.bindAngles.reduce((best, a) => {
+        const fit = Math.cos(a) * want.x + Math.sin(a) * want.y;
+        return fit > 0.6 && (best === undefined || fit > Math.cos(best) * want.x + Math.sin(best) * want.y) ? a : best;
+      }, undefined);
       if (angle === undefined) continue;
       const dir = { x: Math.cos(angle), y: Math.sin(angle) };
       const bind = { x: me.center.x + dir.x * me.radius, y: me.center.y + dir.y * me.radius };
       const end = { x: bind.x + dir.x * 80, y: bind.y + dir.y * 80 };
       const center = { x: end.x + dir.x * r, y: end.y + dir.y * r };
-      if (!this.onMySide({ x: center.x, y: center.y + sign * r })) continue;
+      // Not where one of our own chalklings is standing (the chain would grab it).
+      const crowded = state.chalklings.some((c) => c.owner === this.owner && !c.gone && dist(c.pos, center) < r + c.radius + 30);
+      if (crowded) continue;
+      if (!this.onMySide({ x: center.x + dir.x * r, y: center.y + dir.y * r })) continue; // the far edge of the holding circle
 
       const ring = [];
       const start = Math.atan2(-dir.y, -dir.x); // start drawing where the chain touches
@@ -375,7 +438,7 @@ export class BotController {
         ring.push({ x: center.x + r * Math.cos(a), y: center.y + r * Math.sin(a) });
       }
       let creature = CREATURES[this.level.creature](0, 0);
-      if (this.dirToEnemy < 0) creature = mirror(creature, 0);
+      if (foe.center.x < me.center.x) creature = mirror(creature, 0); // face the enemy
       creature = fitInside(creature, center, r * 0.92);
       const power = this.choosePower(state);
 
@@ -391,7 +454,9 @@ export class BotController {
           { kind: 'check', test: (s) => s.wards.some((w) => w.owner === this.owner && w.holding) },
           // Top levels draw the creature in the detail screen (it counts for more).
           ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true, powers: power ? [power] : [], detail: !!this.level.detailScreen })),
-          { kind: 'stroke', points: this.shaky(line(pathStart, foe.center)), making: true },
+          // A path straight at the enemy circle, unless that would run through
+          // our own circle: then no path, and it marches there by itself.
+          ...(hitCircle(pathStart, foe.center, me.center, me.radius + 10) ? [] : [{ kind: 'stroke', points: this.shaky(line(pathStart, foe.center)), making: true }]),
           { kind: 'erase', at: chainMid, ms: this.cfg.making.eraseMs + 300 },
         ],
       };
@@ -435,11 +500,14 @@ export class BotController {
   }
 
   onMySide(p) {
-    const mid = this.cfg.engine.world.width / 2;
-    const { width, height } = this.cfg.engine.world;
+    const { width, height } = this.state.cfg.world;
     const inBoard = p.x > 10 && p.x < width - 10 && p.y > 10 && p.y < height - 10;
-    return inBoard && (this.owner === 'left' ? p.x < mid - 6 : p.x > mid + 6);
+    return inBoard && depthIn(this.state, this.owner, p).depth > 6;
   }
+}
+
+function dist(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
 function line(a, b) {

@@ -44,7 +44,7 @@ export function eraseAction(state, side, at) {
 // Called every engine step: finish erasing once 3 seconds have passed.
 export function stepErasing(state) {
   const ms = state.cfg.stepMs;
-  for (const side of ['left', 'right']) {
+  for (const side of state.players) {
     const e = state.erasing[side];
     if (!e) continue;
     const stillThere = [...state.walls, ...state.chains, ...state.paths, ...state.wards].some((t) => t.id === e.targetId && !t.gone);

@@ -98,6 +98,9 @@ export class DuelRenderer {
       fx.push(label(e.point, 'Creature lost', now, R.dudColor));
     } else if (e.type === 'arrow') {
       fx.push({ kind: 'arrow', from: e.from, to: e.to, born: now, life: 350 });
+    } else if (e.type === 'out' && e.place) {
+      // In a game of 3 or more, a breached player is out, with their place.
+      if (state.players?.length > 2) fx.push({ kind: 'label', text: `Out: ${ordinal(e.place)} place`, x: e.point.x, y: e.point.y - 150, rise: 20, born: now, life: 3500, color: R.dudColor, size: 30 });
     } else if (e.type === 'chalklingDied') {
       fx.push(dust(e.point, now, 28, 90));
     } else if (e.type === 'wallBroken') {
@@ -114,10 +117,10 @@ export class DuelRenderer {
   // template: optional { parts, done, anchor, showMain } from a practice defense.
   // drafts: chalklings still being drawn in Making mode (lists of strokes).
   // meters: false to leave out the chalk meters (shown once, in the map).
-  // turn: the view's quarter-turn (see makeView), so text can stay upright.
-  draw(state, liveStrokes, now, template = null, { meters = true, turn = 0 } = {}) {
+  // angle: how far the view is turned (see makeView), so text can stay upright.
+  draw(state, liveStrokes, now, template = null, { meters = true, angle = 0 } = {}) {
     const ctx = this.board.ctx;
-    this.turn = turn;
+    this.angle = angle;
     if (template) drawTemplate(ctx, template);
 
     // Lines being rubbed out fade as the 3 seconds tick by.
@@ -154,12 +157,12 @@ export class DuelRenderer {
       this.drawDamage(ctx, ward);
       if (ward.main) {
         drawBindPoints(ctx, ward);
-        upright(ctx, ward.center, this.turn, () => drawDuelist(ctx, ward.center));
+        upright(ctx, ward.center, this.angle, () => drawDuelist(ctx, ward.center));
       }
       if (ward.creature?.length) {
         const pic = this.cached(`cr${ward.id}:${ward.creature.length}`, null, ward.id * 31, R.makingColor, ward.creature);
         // On the turned map, the creature stays the right way up.
-        upright(ctx, ward.center, this.turn, () => ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h));
+        upright(ctx, ward.center, this.angle, () => ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h));
       }
     }
 
@@ -179,8 +182,8 @@ export class DuelRenderer {
     for (const c of state.chalklings) {
       if (c.mode === 'path' && c.path) drawPathLine(ctx, c.path, c.pathIndex, 0.35, null);
       // On the turned map, chalklings stay the right way up (shadow under their feet).
-      upright(ctx, c.pos, this.turn, () => this.drawChalkling(ctx, c, now));
-      upright(ctx, c.pos, this.turn, () => drawFacts(ctx, c));
+      upright(ctx, c.pos, this.angle, () => this.drawChalkling(ctx, c, now));
+      upright(ctx, c.pos, this.angle, () => drawFacts(ctx, c));
     }
     for (const c of state.chalklings) {
       if (c.mode === 'hunt') {
@@ -194,7 +197,7 @@ export class DuelRenderer {
     }
     for (const e of Object.values(state.erasing ?? {})) if (e?.at) drawEraser(ctx, e.at, e.targetId ? (e.progress ?? 0) : 0);
 
-    if (state.chalk && meters) drawChalkMeters(ctx, state, this.board.world);
+    if (state.chalk && meters && (state.players?.length ?? 2) === 2) drawChalkMeters(ctx, state, this.board.world);
     this.drawEffects(ctx, now);
   }
 
@@ -218,7 +221,7 @@ export class DuelRenderer {
 
     ctx.save();
     // Team shadow underneath.
-    ctx.fillStyle = `rgba(${R.teamColors[c.owner]}, 0.18)`;
+    ctx.fillStyle = `rgba(${teamColor(c.owner)}, 0.18)`;
     ctx.beginPath();
     ctx.ellipse(c.pos.x, c.pos.y + c.radius * 0.8, c.radius, c.radius * 0.3, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -280,7 +283,7 @@ export class DuelRenderer {
         ctx.fillStyle = `rgba(${f.color}, 0.9)`;
         const at = { x: clampX(f.x, this.board.world.width), y: Math.max(24, f.y) };
         // Labels float "up" the screen even on a turned map.
-        upright(ctx, at, this.turn, () => ctx.fillText(f.text, at.x, at.y - (f.rise ?? 0) * t));
+        upright(ctx, at, this.angle, () => ctx.fillText(f.text, at.x, at.y - (f.rise ?? 0) * t));
       } else if (f.kind === 'dust') {
         ctx.fillStyle = `rgba(${R.chalkColor}, ${0.7 * (1 - t)})`;
         const secs = (now - f.born) / 1000;
@@ -327,6 +330,15 @@ function spikyText(s) {
   if (pct <= 15) return 'curved: strong on lines';
   if (pct >= 85) return 'spiky: strong on chalklings';
   return `${pct}% spiky`;
+}
+
+// Each player's colour (chalkling shadows, label borders, health bars).
+function teamColor(id) {
+  return R.teamColors[id] ?? R.chalkColor;
+}
+
+export function ordinal(n) {
+  return `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
 }
 
 const ROLE_NAMES = { attacker: 'Attacker', defender: 'Defender', runner: 'Runner', balanced: 'All-rounder' };
@@ -390,7 +402,7 @@ function drawFacts(ctx, c) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, 5);
   ctx.fill();
-  ctx.strokeStyle = `rgba(${R.teamColors[c.owner]}, 0.7)`;
+  ctx.strokeStyle = `rgba(${teamColor(c.owner)}, 0.7)`;
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.textAlign = 'center';
@@ -409,7 +421,7 @@ function drawFacts(ctx, c) {
   const barW = w - 14;
   ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
   ctx.fillRect(x + 7, y + 19, barW, 3);
-  ctx.fillStyle = `rgba(${R.teamColors[c.owner]}, 0.95)`;
+  ctx.fillStyle = `rgba(${teamColor(c.owner)}, 0.95)`;
   ctx.fillRect(x + 7, y + 19, (barW * Math.max(0, c.hp)) / c.max, 3);
   ctx.restore();
 }
@@ -567,11 +579,11 @@ function topOf(points) {
 
 // Draw something (text, a label box) the right way up on a turned view,
 // by turning it back around the point `at`.
-function upright(ctx, at, turn, draw) {
-  if (!turn) return draw();
+function upright(ctx, at, angle, draw) {
+  if (!angle) return draw();
   ctx.save();
   ctx.translate(at.x, at.y);
-  ctx.rotate((-turn * Math.PI) / 2);
+  ctx.rotate(-angle);
   ctx.translate(-at.x, -at.y);
   draw();
   ctx.restore();

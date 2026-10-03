@@ -33,13 +33,15 @@ export function findDefense(id) {
 }
 
 // Turn a defense into board positions around an actual main circle.
-// anchor: { center, radius }. side: 'left' or 'right' (right mirrors it).
+// anchor: { center, radius }. side: 'left' or 'right' (right mirrors it), or
+// with more than two players a facing direction { x, y } to turn it toward.
 export function layoutDefense(defense, anchor, side) {
+  const turned = typeof side === 'object';
   const flip = side === 'left' ? 1 : -1;
-  const at = ([x, y]) => ({
-    x: anchor.center.x + flip * x * anchor.radius,
-    y: anchor.center.y + y * anchor.radius,
-  });
+  const at = ([x, y]) =>
+    turned
+      ? { x: anchor.center.x + (x * side.x - y * side.y) * anchor.radius, y: anchor.center.y + (x * side.y + y * side.x) * anchor.radius }
+      : { x: anchor.center.x + flip * x * anchor.radius, y: anchor.center.y + y * anchor.radius };
   return (defense.parts ?? []).map((part) =>
     part.type === 'circle'
       ? { type: 'circle', center: at(part.center), radius: part.r * anchor.radius }

@@ -38,9 +38,11 @@ function rotateParts(parts, angle, c) {
 }
 
 test('bind points are evenly spaced and the first faces the opponent', () => {
-  assert.deepEqual(bindAngles(4, 'left'), [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]);
-  assert.equal(bindAngles(2, 'right')[0], Math.PI);
-  for (const n of E.bindPointChoices) assert.equal(bindAngles(n, 'left').length, n);
+  const facingRight = { x: 1, y: 0 }; // the left duelist faces right
+  const facingLeft = { x: -1, y: 0 };
+  assert.deepEqual(bindAngles(4, facingRight), [0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2]);
+  assert.equal(bindAngles(2, facingLeft)[0], Math.PI);
+  for (const n of E.bindPointChoices) assert.equal(bindAngles(n, facingRight).length, n);
 });
 
 test('the main circle gets the chosen number of bind points', () => {

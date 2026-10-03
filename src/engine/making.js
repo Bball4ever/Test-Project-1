@@ -21,6 +21,7 @@ import { emit } from './damage.js';
 import { buildSections } from './wards.js';
 import { boundIndex } from './bind.js';
 import { measureCreature, makeChalkling, command } from './chalklings.js';
+import { onOwnSide } from './territory.js';
 
 const near = (a, b, d) => distance(a, b) <= d;
 
@@ -117,8 +118,7 @@ export function addMakingStroke(state, owner, points, main, powers = [], detail 
   if (origin) return addPath(state, owner, points, origin);
 
   const result = recognize(points);
-  const sideOk = points.every((p) => (owner === 'left' ? p.x <= state.cfg.world.width / 2 + state.cfg.sideMargin : p.x >= state.cfg.world.width / 2 - state.cfg.sideMargin));
-  if (!sideOk) return reject('stay on your side', result);
+  if (!onOwnSide(state, owner, points)) return reject('stay on your side', result);
 
   // 1. A straight line from a bind point is a chain. If it ends on one of our
   //    chalklings, that chalkling is chained (ready for a new command).

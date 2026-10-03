@@ -1,5 +1,6 @@
 // Damage rules shared by everything that can hurt a line: Vigors and chalklings.
 
+// In a 2-player duel, the other duelist.
 export function otherSide(side) {
   return side === 'left' ? 'right' : 'left';
 }
@@ -15,14 +16,32 @@ export function damageSection(state, ward, index, amount, point) {
   section.health = Math.max(0, section.health - amount);
   if (section.health > 0 || ward.gone) return;
   if (ward.main) {
-    if (!state.winner) {
-      state.winner = otherSide(ward.owner);
+    if (!state.winner && !state.out.includes(ward.owner)) {
       emit(state, { type: 'breach', owner: ward.owner, wardId: ward.id, section: index, point });
+      knockOut(state, ward.owner);
     }
   } else {
     ward.gone = true;
     emit(state, { type: 'shieldBroken', owner: ward.owner, wardId: ward.id, point });
   }
+}
+
+// A breached duelist is out. When only one is left, they've won. Until then,
+// everything the breached duelist drew is wiped off the board.
+export function knockOut(state, owner) {
+  state.out.push(owner);
+  const alive = state.players.filter((id) => !state.out.includes(id));
+  emit(state, { type: 'out', owner, place: alive.length + 1, point: { ...state.homes[owner] } });
+  if (alive.length === 1) {
+    state.winner = alive[0];
+    return;
+  }
+  for (const list of [state.wards, state.walls, state.vigors, state.chalklings, state.chains, state.paths]) {
+    for (const thing of list) if (thing.owner === owner) thing.gone = true;
+  }
+  state.chains = state.chains.filter((c) => c.owner !== owner);
+  state.paths = state.paths.filter((p) => p.owner !== owner);
+  state.erasing[owner] = null;
 }
 
 export function damageWall(state, wall, amount, point) {

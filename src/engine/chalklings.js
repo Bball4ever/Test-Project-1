@@ -17,8 +17,9 @@
 
 import { pathLength, distance, resample } from '../recognizer/clean.js';
 import { closestOnSegment, sectionAt } from './collide.js';
-import { damageSection, damageWall, damageChalkling, emit, otherSide } from './damage.js';
+import { damageSection, damageWall, damageChalkling, emit } from './damage.js';
 import { obstaclesFor, findRoute, pointBlocked } from './route.js';
+import { depthIn, facingOf } from './territory.js';
 import { powerLevel, cleanPowers, applyPowerStats, biteOf, usePower, flies } from './powers.js';
 
 const REPLAN_TICKS = 30; // look for a fresh route twice a second
@@ -279,10 +280,12 @@ function stepOne(state, c, dt) {
     return;
   }
   if (c.mode === 'return') {
-    const mid = state.cfg.world.width / 2;
-    const goal = { x: mid + (c.owner === 'left' ? -1 : 1) * mk.returnDepth, y: c.pos.y };
-    const home = c.owner === 'left' ? c.pos.x <= goal.x + 2 : c.pos.x >= goal.x - 2;
-    if (home) {
+    // Back into its own territory, returnDepth past the border (straight back
+    // across the nearest border, so in a 2-player duel: back over the middle).
+    const { depth, inward } = depthIn(state, c.owner, c.pos);
+    const back = mk.returnDepth - depth;
+    const goal = { x: c.pos.x + inward.x * back, y: c.pos.y + inward.y * back };
+    if (back <= 2) {
       c.mode = 'waiting';
       c.action = 'idle';
       emit(state, { type: 'waiting', owner: c.owner, id: c.id, point: { ...c.pos } });
@@ -298,7 +301,8 @@ function stepOne(state, c, dt) {
 function stepOrder(state, c, dt) {
   const cc = state.chalkCfg;
   const home = mainOf(state, c.owner);
-  const enemyMain = mainOf(state, otherSide(c.owner));
+  // The enemy circle it marches on: the nearest one still standing.
+  const enemyMain = nearestEnemyMain(state, c);
   const enemies = state.chalklings.filter((e) => e.owner !== c.owner && !e.gone);
 
   let foe = null;
@@ -307,8 +311,9 @@ function stepOrder(state, c, dt) {
     const reach = home.radius + cc.guardRange;
     foe = nearest(c.pos, enemies.filter((e) => distance(e.pos, home.center) < reach));
     if (!foe) {
-      const facing = c.owner === 'left' ? 1 : -1;
-      goal = { x: home.center.x + facing * (home.radius + cc.guardDistance), y: home.center.y };
+      // Guards stand in front of their circle, facing the middle of the board.
+      const facing = facingOf(state, c.owner);
+      goal = { x: home.center.x + facing.x * (home.radius + cc.guardDistance), y: home.center.y + facing.y * (home.radius + cc.guardDistance) };
     }
   } else {
     foe = nearest(c.pos, enemies.filter((e) => distance(e.pos, c.pos) < cc.aggroRange));
@@ -452,6 +457,15 @@ function findBlocker(state, c, next) {
       const point = { x: ward.center.x + out.x * ward.radius, y: ward.center.y + out.y * ward.radius };
       best = { kind: 'ward', thing: ward, point, gap: then, tangent: { x: -out.y, y: out.x } };
     }
+  }
+  return best;
+}
+
+function nearestEnemyMain(state, c) {
+  let best = null;
+  for (const w of state.wards) {
+    if (!w.main || w.gone || w.owner === c.owner) continue;
+    if (!best || distance(c.pos, w.center) < distance(c.pos, best.center)) best = w;
   }
   return best;
 }

@@ -20,6 +20,7 @@ export class Board {
     this.world = world;
     this.version = 0; // goes up on every resize, so cached pictures know to redraw
     this.views = null; // null = one view of the whole board
+    this.homes = null; // players' homes, for drawing territory borders
     this.resize();
     window.addEventListener('resize', () => this.resize());
   }
@@ -80,8 +81,21 @@ export class Board {
     // Real screen pixels per world unit: used to draw cached pictures sharply.
     this.resolution = this.dpr * this.scale;
     this.baseResolution = this.resolution;
-    this.background = makeBackground(this.world.width, this.world.height, this.resolution);
+    // The board surface is pre-drawn too; at least 0.6 pixels a unit so it isn't
+    // too blurry when zoomed in, but never a giant picture.
+    const bgRes = Math.min(Math.max(this.resolution, 0.6 * this.dpr), 4096 / Math.max(this.world.width, this.world.height));
+    this.background = makeBackground(this.world.width, this.world.height, bgRes, this.homes);
     this.version++;
+  }
+
+  // A new duel with a different board size or players (more than 2 players
+  // means a bigger board with territory borders).
+  setWorld(world, homes = null) {
+    const players = homes ? Object.keys(homes).length : 2;
+    if (world.width === this.world.width && world.height === this.world.height && players === (this.homes ? Object.keys(this.homes).length : 2)) return;
+    this.world = { ...world };
+    this.homes = players > 2 ? homes : null;
+    this.resize();
   }
 
   // Screen position (from a pointer event) → world position.
@@ -106,20 +120,25 @@ export class Board {
 // (CSS pixels), as big as fits. zoom > 1 zooms in on `focus` (a world point,
 // default the middle of `area`).
 //
-// turn: 0 = the world as it is; -1 = turned a quarter to the left, so the
-// world's left edge is at the BOTTOM and its right edge at the top (the left
-// duelist sees their own side nearest them); 1 = turned the other way.
-export function makeView(name, rect, area, { zoom = 1, focus = null, pad = 0, turn = 0 } = {}) {
-  const [aw, ah] = turn ? [area.h, area.w] : [area.w, area.h]; // how big the area looks on screen
+// angle: turn the world this much (radians) on screen. The map uses it so
+// your own home is at the BOTTOM (in a 2-player duel, -90° for the left
+// duelist: the board's left edge at the bottom, its right edge at the top).
+export function makeView(name, rect, area, { zoom = 1, focus = null, pad = 0, angle = 0 } = {}) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  // How big the (turned) area looks on screen.
+  const aw = Math.abs(cos) * area.w + Math.abs(sin) * area.h;
+  const ah = Math.abs(sin) * area.w + Math.abs(cos) * area.h;
   const scale = Math.min((rect.w - pad * 2) / aw, (rect.h - pad * 2) / ah) * zoom;
   const f = focus ?? { x: area.x + area.w / 2, y: area.y + area.h / 2 };
   // screen x = a·x + c·y + ox,  screen y = b·x + d·y + oy  (x, y in the world)
-  const [a, b, c, d] = turn === 0 ? [scale, 0, 0, scale] : turn < 0 ? [0, -scale, scale, 0] : [0, scale, -scale, 0];
+  const round = (v) => (Math.abs(v) < 1e-12 ? 0 : v);
+  const [a, b, c, d] = [round(scale * cos), round(scale * sin), round(-scale * sin), round(scale * cos)];
   return {
     name,
     rect,
     scale,
-    turn,
+    angle,
     a,
     b,
     c,
@@ -137,7 +156,7 @@ export function viewStep(view, dx, dy) {
 
 // The board surface: dark green slate, old eraser smudges, fine grain,
 // and a faint line splitting the two duelists' halves.
-function makeBackground(width, height, dpr) {
+function makeBackground(width, height, dpr, homes = null) {
   const c = document.createElement('canvas');
   c.width = Math.round(width * dpr);
   c.height = Math.round(height * dpr);
@@ -174,16 +193,40 @@ function makeBackground(width, height, dpr) {
     ctx.fillRect(rng() * width, rng() * height, 1, 1);
   }
 
-  // Center line.
-  ctx.save();
-  ctx.strokeStyle = `rgba(${R.chalkColor}, 0.12)`;
-  ctx.lineWidth = 2;
-  ctx.setLineDash([14, 12]);
-  ctx.beginPath();
-  ctx.moveTo(width / 2, 12);
-  ctx.lineTo(width / 2, height - 12);
-  ctx.stroke();
-  ctx.restore();
+  if (homes) {
+    // Territory borders: a faint dotted line wherever the nearest home changes.
+    const owner = (x, y) => {
+      let best = null;
+      let bestD = Infinity;
+      for (const [id, h] of Object.entries(homes)) {
+        const d = (x - h.x) ** 2 + (y - h.y) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = id;
+        }
+      }
+      return best;
+    };
+    ctx.fillStyle = `rgba(${R.chalkColor}, 0.16)`;
+    const step = 12;
+    for (let y = step / 2; y < height; y += step) {
+      for (let x = step / 2; x < width; x += step) {
+        const here = owner(x, y);
+        if (owner(x + step, y) !== here || owner(x, y + step) !== here) ctx.fillRect(x + step / 2 - 1.5, y + step / 2 - 1.5, 3, 3);
+      }
+    }
+  } else {
+    // Center line.
+    ctx.save();
+    ctx.strokeStyle = `rgba(${R.chalkColor}, 0.12)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([14, 12]);
+    ctx.beginPath();
+    ctx.moveTo(width / 2, 12);
+    ctx.lineTo(width / 2, height - 12);
+    ctx.stroke();
+    ctx.restore();
+  }
 
   return c;
 }

@@ -21,7 +21,7 @@ import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
 import { BotController } from './controllers/bot.js';
 import { Board, makeView, viewStep } from './render/board.js';
-import { DuelRenderer } from './render/duel.js';
+import { DuelRenderer, ordinal } from './render/duel.js';
 import { drawDuelDebug, debugPanelText } from './render/debug.js';
 import { DEFENSES, findDefense, layoutDefense, tracedParts } from './data/defenses.js';
 import { OnlineClient } from './net/client.js';
@@ -35,7 +35,8 @@ const hasTouch = navigator.maxTouchPoints > 0;
 
 // Choices from the start screen.
 // screen: 'right' or 'left' = split screen, drawing on that side; 'classic' = one board.
-const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bind: '4', template: '', screen: 'right' };
+// bots: how many bots to play against (1 to 9; 2 or more is a free-for-all).
+const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bots: '1', bind: '4', template: '', screen: 'right' };
 // Where the practice template sits until you draw your own main circle.
 const TEMPLATE_HOME = { center: { x: 380, y: 450 }, radius: 140 };
 
@@ -68,7 +69,7 @@ const human = new HumanController(canvas, {
   // screen, whichever half the stroke starts in.
   owner(point) {
     if (!session?.state || session.state.winner) return null;
-    const humans = SIDES.filter((s) => session.seats[s].kind === 'human');
+    const humans = Object.keys(session.seats).filter((s) => session.seats[s].kind === 'human');
     if (humans.length === 1) return humans[0];
     return point.x < CONFIG.engine.world.width / 2 ? 'left' : 'right';
   },
@@ -119,18 +120,26 @@ function startLocalDuel() {
   closeNet();
   const bind = Number(choices.bind);
   const local = choices.mode === 'local';
+  // Against bots there can be up to 9 of them (10 players in all).
+  const players = choices.mode === 'bot' ? 1 + Number(choices.bots) : 2;
+  const state = createDuel({ players, bindPoints: { left: bind, right: local ? bind : CONFIG.engine.defaultBindPoints } });
+  const seats = { left: makeSeat('human') };
+  for (const id of state.players.slice(1)) seats[id] = local ? makeSeat('human') : opponentSeat(id);
   session = {
     mode: choices.mode,
     // The split screen is for one player (same-screen play keeps one board).
     screen: local ? 'classic' : choices.screen,
-    state: createDuel({ bindPoints: { left: bind, right: local ? bind : CONFIG.engine.defaultBindPoints } }),
-    seats: { left: makeSeat('human'), right: local ? makeSeat('human') : opponentSeat() },
+    state,
+    seats,
   };
   beginDuel();
 }
 
 function beginDuel() {
   setPaused(false);
+  // A bigger board for a bigger game (online, the board comes with the first snapshot).
+  if (session.state) board.setWorld(session.state.cfg.world, session.state.homes);
+  else board.setWorld(CONFIG.engine.world);
   resetSplit();
   renderer.reset();
   human.cancelAll();
@@ -143,10 +152,10 @@ function beginDuel() {
   updateControls();
 }
 
-function opponentSeat() {
+function opponentSeat(id) {
   if (choices.mode === 'bot') {
     const seed = Math.floor(Math.random() * 1e9);
-    return makeSeat('bot', new BotController({ owner: 'right', level: choices.level, seed }));
+    return makeSeat('bot', new BotController({ owner: id, level: choices.level, seed }));
   }
   return makeSeat('dummy', new DummyController({ owner: 'right', style: choices.dummy }));
 }
@@ -161,6 +170,15 @@ function showEnd() {
   } else if (mode === 'local') {
     $('end-title').textContent = `Breach! The ${state.winner} player wins.`;
     $('end-stats').textContent = `${secs} seconds. Left threw ${seats.left.waves} Lines of Vigor, right threw ${seats.right.waves}.`;
+  } else if (state.players?.length > 2) {
+    // Free-for-all: what place you came.
+    const n = state.players.length;
+    const won = state.winner === 'left';
+    const place = won ? 1 : n - state.out.indexOf('left');
+    const waves = seats.left.waves;
+    const bots = `${n - 1} ${CONFIG.bot.levels[choices.level].name} bots`;
+    $('end-title').textContent = won ? 'Last circle standing! You win.' : `You were breached: ${ordinal(place)} of ${n}.`;
+    $('end-stats').textContent = `${secs} seconds against ${bots}. You threw ${waves} Line${waves === 1 ? '' : 's'} of Vigor.`;
   } else {
     const me = mode === 'online' ? session.mySide : 'left';
     const waves = seats[me].waves;
@@ -175,6 +193,7 @@ function backToMenu() {
   setPaused(false);
   closeNet();
   session = null;
+  board.setWorld(CONFIG.engine.world);
   $('end').hidden = true;
   $('start').hidden = false;
   setOnlineStatus('');
@@ -295,8 +314,7 @@ function frame(now) {
     if (!session.net) {
       accumulator += elapsed;
       while (accumulator >= CONFIG.engine.stepMs) {
-        for (const side of SIDES) {
-          const seat = seats[side];
+        for (const [side, seat] of Object.entries(seats)) {
           if (seat.controller) seat.live = seat.controller.update(state, (action) => act(side, action));
         }
         step(state);
@@ -305,7 +323,10 @@ function frame(now) {
       for (const e of state.events.splice(0)) onEvent(e, now);
     }
     sendLiveStroke(now);
-    if (state.winner && !endShown && now - breachAt > 1400) showEnd();
+    // The duel is over for you when someone has won, or (with several bots)
+    // when you've been breached.
+    const over = state.winner || state.out?.includes(keyboardSide());
+    if (over && !endShown && now - breachAt > 1400) showEnd();
   }
 
   layoutViews();
@@ -319,14 +340,14 @@ function frame(now) {
       .liveStrokes()
       .filter((s) => !s.erasing)
       .map((s) => ({ ...s, making: seats[s.owner].making || s.view?.name === 'detail' }));
-    for (const side of SIDES) if (seats[side].live?.points) live.push(seats[side].live);
+    for (const seat of Object.values(seats)) if (seat.live?.points) live.push(seat.live);
     const template = practiceTemplate();
     const target = detailWard();
     for (const view of views) {
       if (view.empty) continue;
       board.beginView(view);
       // The chalk meters are shown once: on the map (or the one board).
-      renderer.draw(state, live, now, template, { meters: view.name === 'full', turn: view.turn ?? 0 });
+      renderer.draw(state, live, now, template, { meters: view.name === 'full', angle: view.angle ?? 0 });
       if (target && view.name !== 'detail') markDetailCircle(board.ctx, target);
       if (debug) drawDuelDebug(board.ctx, state);
       board.endView();
@@ -427,13 +448,17 @@ function layoutViews() {
   // The map is turned so the battle runs up and down, your side at the
   // bottom. Turned, the board is tall and thin, so the map only needs a narrow
   // column and the drawing screens get the rest of the width.
-  const turn = keyboardSide() === 'left' ? -1 : 1;
-  const mapW = Math.round(Math.min(W * 0.42, ((H - 16) * height) / width + 16));
+  // Turned so that your home is at the bottom of the map.
+  const home = session.state.homes?.[keyboardSide()] ?? { x: width / 4, y: height / 2 };
+  const angle = Math.PI / 2 - Math.atan2(home.y - height / 2, home.x - width / 2);
+  const turnedW = Math.abs(Math.cos(angle)) * width + Math.abs(Math.sin(angle)) * height;
+  const turnedH = Math.abs(Math.sin(angle)) * width + Math.abs(Math.cos(angle)) * height;
+  const mapW = Math.round(Math.min(W * 0.42, ((H - 16) * turnedW) / turnedH + 16));
   const drawW = W - mapW;
   const drawX = session.screen === 'right' ? mapW : 0;
   const mapX = session.screen === 'right' ? 0 : drawW;
   document.body.style.setProperty('--map-w', `${mapW}px`);
-  const map = makeView('map', { x: mapX, y: 0, w: mapW, h: H }, { x: 0, y: 0, w: width, h: height }, { zoom: camera.zoom, focus: camera.focus, pad: 8, turn });
+  const map = makeView('map', { x: mapX, y: 0, w: mapW, h: H }, { x: 0, y: 0, w: width, h: height }, { zoom: camera.zoom, focus: camera.focus, pad: 8, angle });
   const mainH = Math.round(H * 0.6);
   const main = makeView('main', { x: drawX, y: 0, w: drawW, h: mainH }, myArea(drawW / mainH), { pad: 6 });
   const ward = detailWard();
@@ -457,8 +482,14 @@ function layoutViews() {
 function myArea(aspect) {
   const { width, height } = board.world;
   const me = keyboardSide();
-  const half = { x0: me === 'left' ? 0 : width / 2, x1: me === 'left' ? width / 2 : width };
+  const many = session.state.players?.length > 2;
+  // With 2 players your area is your half; with more, the board around your home.
+  const half = many ? { x0: 0, x1: width } : { x0: me === 'left' ? 0 : width / 2, x1: me === 'left' ? width / 2 : width };
   const main = mainWard(session.state, me);
+  if (!main && many) {
+    const home = session.state.homes[me];
+    return { x: home.x - 450, y: home.y - 450, w: 900, h: 900 };
+  }
   if (!main) return { x: half.x0, y: 0, w: half.x1 - half.x0, h: height };
   const { x, y } = main.center;
   const R = main.radius;
@@ -561,10 +592,20 @@ function drawPanelFrames(ctx, views, dpr, state) {
 function drawChalkStrip(ctx, rect, state) {
   if (!Number.isFinite(state.chalkStart)) return;
   const me = keyboardSide();
+  const players = state.players ?? ['left', 'right'];
   const rows = [
     ['You', me],
-    ['Enemy', me === 'left' ? 'right' : 'left'],
+    ...(players.length > 2 ? [] : [['Enemy', me === 'left' ? 'right' : 'left']]),
   ];
+  if (players.length > 2) {
+    // Free-for-all: how many are still in.
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(235, 238, 228, 0.75)';
+    const left = players.length - (state.out?.length ?? 0);
+    ctx.fillText(`${left} of ${players.length} still in`, rect.x + rect.w - 10, rect.y + 24);
+  }
   let x = rect.x + rect.w - 10;
   ctx.font = '600 11px system-ui, sans-serif';
   ctx.textBaseline = 'top';
@@ -704,7 +745,7 @@ function giveOrder(side, order) {
 function keyboardSide() {
   if (!session) return null;
   if (session.net) return session.mySide;
-  return SIDES.find((s) => session.seats[s].kind === 'human');
+  return Object.keys(session.seats).find((s) => session.seats[s].kind === 'human');
 }
 
 function updateControls() {
@@ -786,6 +827,7 @@ function duelHint() {
       : 'Defense complete! Now attack.';
   }
   if (template) return 'Trace the faint circle first: it becomes your main circle.';
+  if (!main && state.players?.length > 2) return `Free-for-all with ${state.players.length - 1} bots! Draw your main circle in your territory (the bottom of the map). Last circle standing wins.`;
   if (!main) return `${where}Draw your main circle on the ${side} half.`;
   return `${where}Waves need 3+ humps: curved humps smash lines, spiky humps smash chalklings. Straight lines make walls (8 at most). To make a chalkling, press Chalkling (M).`;
 }

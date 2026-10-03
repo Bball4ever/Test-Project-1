@@ -91,7 +91,17 @@ Press **Eraser** (or E), then click one of your own lines. The eraser turns itse
 ## Modes
 
 - **Practice dummy:** it draws a neat or sloppy circle and stands still. You can also pick a defense to trace.
-- **Bot:** ten levels (below). Bots draw like people do: point by point, with a shaky hand, through the same recognizer.
+- **Bot:** ten levels (below), and **1 to 9 bots**. Bots draw like people do: point by point, with a shaky hand, through the same recognizer.
+
+## Free-for-all (2 to 9 bots)
+
+Pick **How many bots** on the start screen. With 2 or more it's a free-for-all of up to 10 players: everyone against everyone, bots attack each other too, and the **last circle standing wins**. All the bots play at the level you picked.
+
+- The board gets bigger with more players, and everyone's home sits in a ring. Your **territory** is the part of the board closer to your home than to anyone else's (faint dotted borders); you can only draw in yours.
+- On the split screen the map is turned so your home is at the bottom. With many players the map is small, so zoom in (scroll or pinch) to look around.
+- When a circle is breached, that player is **out** and everything they drew is wiped off the board. If it's you, the end screen says what place you came (for example "4th of 10").
+- Chalklings on Attack go for the **nearest** enemy circle still standing. Bots attack the nearest enemy too, and smash walls in the way with curved waves.
+- With 1 bot it's the classic duel, left half against right half.
 
 ## Bot levels
 
@@ -136,7 +146,7 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 113 tests covering:
+There are 119 tests covering:
 - the recognizer
 - the duel engine (damage, how spiky waves are, walls stopping waves, the wall limit, breach)
 - bind points
@@ -144,6 +154,7 @@ There are 113 tests covering:
 - chalkling powers (including detail grading, the detail screen bonus and split powers)
 - the chalk limit
 - the bots (including all ten levels ranking in order)
+- free-for-alls of 3 to 10 players (territories, knock-outs, last one standing)
 - online play (two real connections, checking both see the same duel)
 
 Real strokes saved with **S** go into `tests/fixtures/recorded.json` and are checked on every run.

@@ -15,38 +15,44 @@ import { emit, otherSide, damageSection, damageWall, damageChalkling } from './d
 import { stepChalklings } from './chalklings.js';
 import { addMakingStroke, tidy } from './making.js';
 import { stepErasing } from './erase.js';
+import { makeTerritories, playerIds, onOwnSide, facingOf, alivePlayers } from './territory.js';
 
 export { otherSide };
 export const SIDES = ['left', 'right'];
 export const ORDERS = ['attack', 'guard'];
 
+// options.players: how many duelists (2 to 10). 2 is the classic duel, left
+// against right; with more it's a free-for-all on a bigger board (territory.js).
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
 // options.chalk: how much chalk each duelist starts with (CONFIG.chalk.supply).
-export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, powerCfg = CONFIG.powers, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost } = {}) {
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, powerCfg = CONFIG.powers, players = 2, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost } = {}) {
+  const ids = playerIds(players);
+  const { world, homes } = makeTerritories(ids, cfg);
+  const each = (value) => Object.fromEntries(ids.map((id) => [id, typeof value === 'function' ? value(id) : value]));
   return {
-    cfg,
+    cfg: world.width === cfg.world.width && world.height === cfg.world.height ? cfg : { ...cfg, world },
     chalkCfg,
     makeCfg,
     powerCfg,
+    players: ids, // everyone in the duel, e.g. ['left', 'right', 'p2']
+    homes, // each player's home point; their territory is around it
+    out: [], // players who have been breached, in order
     chalkCost: { vigorCost: chalkVigorCost },
-    chalk: { left: chalk, right: chalk }, // chalk each duelist has left
+    chalk: each(chalk), // chalk each duelist has left
     chalkStart: chalk,
-    orders: { left: 'attack', right: 'attack' }, // what each side's chalklings do
-    bindPoints: {
-      left: bindPoints.left ?? cfg.defaultBindPoints,
-      right: bindPoints.right ?? cfg.defaultBindPoints,
-    },
+    orders: each('attack'), // what each side's chalklings do
+    bindPoints: each((id) => bindPoints[id] ?? cfg.defaultBindPoints),
     tick: 0,
     timeMs: 0,
-    winner: null, // 'left' | 'right' once someone is breached, or 'draw'
+    winner: null, // the last player standing once the others are breached, or 'draw'
     wards: [], // Lines of Warding (circles)
     walls: [], // Lines of Forbiddance
     vigors: [], // Lines of Vigor in flight
     chalklings: [], // Lines of Making, walking about
     chains: [], // chains from bind points to holding circles or chalklings
     paths: [], // paths drawn for chalklings, waiting for their chain to be erased
-    erasing: { left: null, right: null }, // the line each side is erasing right now
+    erasing: each(null), // the line each side is erasing right now
     events: [], // things that just happened, for the renderer's effects
     nextId: 1,
   };
@@ -64,7 +70,7 @@ export function mainWard(state, side) {
 // control: how the chalkling will be controlled: 'remote', 'attack' or 'guard'.
 export function addStroke(state, owner, rawPoints, { making = false, powers = [], detail = false, control = 'remote' } = {}) {
   if (detail) making = true;
-  if (state.winner || !rawPoints.length) return { accepted: false, result: null };
+  if (state.winner || !rawPoints.length || state.out.includes(owner)) return { accepted: false, result: null };
   const cfg = state.cfg;
   const points = rawPoints.map((p) => ({ x: p.x, y: p.y }));
 
@@ -86,7 +92,7 @@ export function addStroke(state, owner, rawPoints, { making = false, powers = []
     return { accepted: false, result: dud };
   };
 
-  if (!onOwnSide(points, owner, cfg)) return reject('stay on your side');
+  if (!onOwnSide(state, owner, points)) return reject('stay on your side');
   if (result.type === 'dud') return reject(result.reason);
   if (result.type !== 'warding' && !mainWard(state, owner)) return reject('draw your circle first');
 
@@ -108,7 +114,7 @@ export function addStroke(state, owner, rawPoints, { making = false, powers = []
       sections: buildSections(result, cfg),
       points,
     };
-    if (ward.main) ward.bindAngles = bindAngles(state.bindPoints[owner], owner);
+    if (ward.main) ward.bindAngles = bindAngles(state.bindPoints[owner], facingOf(state, owner));
     else attachTo(state, home, ward);
     state.wards.push(ward);
   } else if (result.type === 'forbiddance') {
@@ -152,12 +158,6 @@ function attachTo(state, main, thing) {
   }
 }
 
-function onOwnSide(points, owner, cfg) {
-  const mid = cfg.world.width / 2;
-  return owner === 'left'
-    ? points.every((p) => p.x <= mid + cfg.sideMargin)
-    : points.every((p) => p.x >= mid - cfg.sideMargin);
-}
 
 // Advance the duel by one fixed step.
 export function step(state) {
@@ -175,9 +175,9 @@ export function step(state) {
   state.walls = state.walls.filter((w) => !w.gone);
   state.chalklings = state.chalklings.filter((c) => !c.gone);
 
-  // Both out of chalk and nothing left moving: nobody can win, so it's a draw.
+  // Everyone left is out of chalk and nothing is moving: nobody can win, so it's a draw.
   const low = CONFIG.chalk.tooLittle;
-  if (!state.winner && state.chalk.left < low && state.chalk.right < low && !state.vigors.length && !state.chalklings.length) {
+  if (!state.winner && alivePlayers(state).every((id) => state.chalk[id] < low) && !state.vigors.length && !state.chalklings.length) {
     state.winner = 'draw';
     emit(state, { type: 'draw' });
   }
