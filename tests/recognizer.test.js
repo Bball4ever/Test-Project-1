@@ -124,7 +124,7 @@ test('wave direction goes from the start of the stroke to the end', () => {
   }
 });
 
-test('uneven waves score lower on average, lopsided ones are duds', () => {
+test('uneven waves score lower; sloppy ones still count, really lopsided ones are duds', () => {
   const average = (irregular) => {
     let total = 0;
     for (let seed = 1; seed <= 10; seed++) total += recognize(S.wave({ noise: 2, irregular, seed })).quality;
@@ -133,7 +133,12 @@ test('uneven waves score lower on average, lopsided ones are duds', () => {
   const scores = [0, 0.2, 0.4, 0.8].map(average);
   for (let i = 1; i < scores.length; i++) assert.ok(scores[i] < scores[i - 1], scores.join(', '));
 
-  const lopsided = recognize(S.wave({ noise: 2, cycles: 4, pattern: [1.5, 0.4, 0.8] }));
+  // A sloppy wave still counts, it just scores low (and hits softer)...
+  const sloppy = recognize(S.wave({ noise: 2, cycles: 4, pattern: [1.5, 0.4, 0.8] }));
+  assert.equal(sloppy.type, VIGOR);
+  assert.ok(sloppy.quality < 0.4, `quality ${sloppy.quality}`);
+  // ...but a really lopsided one is a dud.
+  const lopsided = recognize(S.wave({ noise: 2, cycles: 4, pattern: [1.8, 0.3, 0.9] }));
   assert.equal(lopsided.type, DUD, `quality ${lopsided.quality}`);
   assert.equal(lopsided.reason, 'wave too uneven');
 });
@@ -222,4 +227,27 @@ test('recorded strokes are recognized as expected', () => {
     const r = recognize(points.map(([x, y]) => ({ x, y })));
     assert.equal(r.type, expect, `${device ?? '?'} ${note ?? ''}: got ${r.type} (${r.reason ?? r.quality})`);
   }
+});
+
+test('waves drawn on a bend (the arm swinging in an arc) still count', () => {
+  for (const bend of [-0.6, -0.4, 0.4, 0.6]) {
+    for (const seed of [1, 2, 3]) {
+      // A wave whose middle line curves by `bend` radians from start to end.
+      const pts = S.wave({ x: 100, y: 300, length: 360, amplitude: 25, cycles: 3, noise: 1, seed }).map((p) => {
+        const f = (p.x - 100) / 360;
+        const a = bend * f;
+        const r = p.x - 100;
+        return { x: 100 + Math.cos(a) * r - Math.sin(a) * (p.y - 300), y: 300 + Math.sin(a) * r + Math.cos(a) * (p.y - 300) };
+      });
+      const r = recognize(pts);
+      assert.equal(r.type, VIGOR, `bend ${bend} seed ${seed}: ${r.reason}`);
+    }
+  }
+});
+
+test('scribbles and back-and-forth zigzags are still not waves', () => {
+  let waves = 0;
+  for (let seed = 1; seed <= 100; seed++) if (recognize(S.scribble({ seed })).type === VIGOR) waves++;
+  assert.ok(waves <= 6, `${waves} of 100 scribbles counted as waves`);
+  for (let seed = 1; seed <= 20; seed++) assert.notEqual(recognize(S.zigzagBack({ seed })).type, VIGOR);
 });

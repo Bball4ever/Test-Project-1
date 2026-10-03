@@ -43,7 +43,8 @@ export function classify(points, cfg) {
   const wave = measureWave(points, cfg.vigor);
   Object.assign(metrics, wave.metrics);
   if (wave.isWave) {
-    return finish(TYPES.VIGOR, wave.quality, 'wave too uneven', wave.shape, metrics, cfg);
+    // Waves get a lower bar than circles and lines: a sloppy wave still flies, it just hits softer.
+    return finish(TYPES.VIGOR, wave.quality, 'wave too uneven', wave.shape, metrics, { ...cfg, minQuality: cfg.vigor.minQuality });
   }
 
   // 4. Nothing matched. Give the most helpful reason we can.
@@ -142,7 +143,23 @@ function measureLine(points, length, cfg) {
 
 // --- Vigor ----------------------------------------------------------------
 
+// A wave is measured against its middle line. People's waves often bend (the
+// arm swings in an arc), so if a straight middle line doesn't fit well we try
+// again with one that follows the wave's curve, and keep whichever fits better.
 function measureWave(points, cfg) {
+  const straight = measureWaveStraight(points, cfg);
+  if (straight.isWave && straight.quality >= cfg.goodQuality) return straight;
+  const bent = measureWaveBent(points, cfg, Math.max(cfg.minHumps, straight.metrics.crossings + 1));
+  if (!bent) return straight;
+  // If it already counts as a wave against a straight line, only switch when
+  // the wave really does bend (otherwise the bending line can hide lopsided humps).
+  const reallyBent = bent.metrics.bend >= cfg.minBend;
+  if (bent.isWave && (!straight.isWave || (reallyBent && bent.quality > straight.quality))) return bent;
+  if (!straight.isWave && !straight.looksWavy && bent.looksWavy) return bent;
+  return straight;
+}
+
+function measureWaveStraight(points, cfg) {
   // First guess at the wave's center line: the best-fit line through every point.
   // For a sine wave this comes out slightly tilted, so we refine it: the true
   // center runs through the midpoints between each peak and the next trough.
@@ -159,6 +176,78 @@ function measureWave(points, cfg) {
     axis = fitLine(mids);
     pass = analyzeAgainst(points, axis, cfg);
   }
+  const { u, dir } = pass;
+  const start = { x: axis.point.x + u[0] * dir.x, y: axis.point.y + u[0] * dir.y };
+  const end = { x: axis.point.x + u[u.length - 1] * dir.x, y: axis.point.y + u[u.length - 1] * dir.y };
+  return scoreWave(points, pass, start, end, cfg);
+}
+
+// A middle line that bends with the wave: each point's average with the
+// points around it over one whole wave (up and back down), which cancels the
+// wiggle and leaves the curve. Near the ends, where a whole wave doesn't fit,
+// the middle line carries straight on.
+function measureWaveBent(points, cfg, humps) {
+  const n = points.length;
+  const half = Math.floor(n / humps); // half of one whole wave, in points
+  if (half < 3 || n - 2 * half < 3) return null;
+  const C = new Array(n);
+  for (let i = half; i < n - half; i++) {
+    let x = 0;
+    let y = 0;
+    for (let k = i - half; k <= i + half; k++) {
+      x += points[k].x;
+      y += points[k].y;
+    }
+    C[i] = { x: x / (2 * half + 1), y: y / (2 * half + 1) };
+  }
+  const unit = (a, b) => {
+    const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+    return { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+  };
+  const a = half;
+  const b = n - half - 1;
+  const Ta = unit(C[a], C[Math.min(b, a + 2)]);
+  const Tb = unit(C[Math.max(a, b - 2)], C[b]);
+  const T = new Array(n);
+  for (let i = 0; i < n; i++) {
+    if (i < a || i > b) {
+      // Past the ends: carry the middle line straight on.
+      const [c, t] = i < a ? [C[a], Ta] : [C[b], Tb];
+      const along = (points[i].x - c.x) * t.x + (points[i].y - c.y) * t.y;
+      C[i] = { x: c.x + t.x * along, y: c.y + t.y * along };
+      T[i] = t;
+    }
+  }
+  for (let i = a; i <= b; i++) T[i] = unit(C[Math.max(a, i - 1)], C[Math.min(b, i + 1)]);
+  // u: distance along the middle line; v: distance to the side of it.
+  const u = new Array(n);
+  const v = new Array(n);
+  let along = 0;
+  for (let i = 0; i < n; i++) {
+    if (i > 0) along += Math.hypot(C[i].x - C[i - 1].x, C[i].y - C[i - 1].y);
+    const dx = points[i].x - C[i].x;
+    const dy = points[i].y - C[i].y;
+    u[i] = along + dx * T[i].x + dy * T[i].y;
+    v[i] = T[i].x * dy - T[i].y * dx;
+  }
+  const dir = unit(C[0], C[n - 1]);
+  const pass = { u, v, dir, ...crossingsAndBumps(u, v, cfg) };
+  const result = scoreWave(points, pass, C[0], C[n - 1], cfg);
+  // How much the middle line turns, end to end: a wave bends gently; a
+  // scribble's middle line wanders all over.
+  const bend = Math.abs(totalTurning(C.slice(a, b + 1)));
+  const straightness = Math.hypot(C[n - 1].x - C[0].x, C[n - 1].y - C[0].y) / (along || 1);
+  result.metrics.bend = bend;
+  result.metrics.middleStraightness = straightness;
+  if (straightness < cfg.minMiddleStraightness) {
+    result.isWave = false;
+    result.looksWavy = false;
+  }
+  return result;
+}
+
+// Everything that's measured once we know u and v for every point.
+function scoreWave(points, pass, start, end, cfg) {
   const { u, v, crossings, bumps, dir } = pass;
 
   // How much of the path moves backward along the center line?
@@ -197,8 +286,8 @@ function measureWave(points, cfg) {
     shape: {
       kind: 'wave',
       dir,
-      start: { x: axis.point.x + u[0] * dir.x, y: axis.point.y + u[0] * dir.y },
-      end: { x: axis.point.x + u[u.length - 1] * dir.x, y: axis.point.y + u[u.length - 1] * dir.y },
+      start,
+      end,
       crossings: crossings.map((i) => points[i]),
       amplitude,
       spikiness,
@@ -249,6 +338,11 @@ function analyzeAgainst(points, axis, cfg) {
 
   const u = points.map((p) => (p.x - line.point.x) * dir.x + (p.y - line.point.y) * dir.y);
   const v = points.map((p) => sideOfLine(p, line));
+  return { u, v, dir, ...crossingsAndBumps(u, v, cfg) };
+}
+
+// Where the stroke crosses its middle line, and the bumps between crossings.
+function crossingsAndBumps(u, v, cfg) {
 
   // Count crossings of the center line. A crossing only counts once the stroke
   // gets a real distance to the other side, so small jitter is ignored.
@@ -293,5 +387,5 @@ function analyzeAgainst(points, axis, cfg) {
     bumps.push({ width: Math.abs(u[b] - u[a]), height: Math.abs(v[peak]), peak, fill });
   }
 
-  return { u, v, crossings, bumps, dir };
+  return { crossings, bumps };
 }

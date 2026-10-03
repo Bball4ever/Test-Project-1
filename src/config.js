@@ -46,6 +46,16 @@ export const CONFIG = {
     // --- Line of Vigor (wave) ---
     vigor: {
       minHumps: 3, // a wave needs at least this many humps (bumps to either side)
+      // A wave that measures at least this well against a straight middle line
+      // is taken as it is; otherwise a middle line that bends with it is tried too.
+      goodQuality: 0.7,
+      // Below this quality a wave is a dud ("wave too uneven"). Lower than for
+      // circles and lines: a sloppy wave still flies, it just hits softer.
+      minQuality: 0.25,
+      // A bent middle line must still head mostly one way (end-to-end distance ÷
+      // its length): a wave bends gently, a scribble's middle line wanders.
+      minMiddleStraightness: 0.85,
+      minBend: 0.15, // (radians) how much a middle line must bend to count as bent
       // A part-hump at either end counts if it's at least this fraction of a
       // whole hump's width and height. (Height is more lenient: on a short
       // wave the center line comes out a little tilted, which shrinks the ends.)
@@ -60,7 +70,7 @@ export const CONFIG = {
       minAmplitude: 6, // px, the average bump must be at least this tall
       // A real wave keeps moving forward. If more than this fraction of the
       // path moves backward, it's a scribble, not a wave.
-      maxBacktrackFraction: 0.15,
+      maxBacktrackFraction: 0.2,
       // Spread (std / mean) of bump widths/heights at which quality drops to zero.
       maxSpread: 0.4,
       widthWeight: 0.5,
