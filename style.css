@@ -105,9 +105,9 @@ kbd {
   border-left: none;
 }
 
-/* Power buttons: shown at the top, under the hint, while Chalkling mode is on
+/* Chalkling buttons (Command): shown at the top, under the hint, while Chalkling mode is on
    (up there they don't cover the part of the board you draw chalklings on). */
-.side-controls .power-picker {
+.side-controls .chalkling-picker {
   position: fixed;
   top: 64px;
   display: flex;
@@ -117,26 +117,26 @@ kbd {
   max-width: calc(50vw - 32px);
 }
 
-.side-controls[data-side='left'] .power-picker {
+.side-controls[data-side='left'] .chalkling-picker {
   left: 16px;
 }
 
-.side-controls[data-side='right'] .power-picker {
+.side-controls[data-side='right'] .chalkling-picker {
   right: 16px;
   justify-content: flex-end;
 }
 
-.side-controls .power-picker[hidden] {
+.side-controls .chalkling-picker[hidden] {
   display: none;
 }
 
-.side-controls .power-picker span {
+.side-controls .chalkling-picker span {
   font-size: 13px;
   opacity: 0.8;
   margin-right: 2px;
 }
 
-.side-controls .power-picker button {
+.side-controls .chalkling-picker button {
   padding: 4px 8px;
   font-size: 13px;
 }
@@ -293,7 +293,7 @@ button.primary:hover {
 body[data-split] .hud,
 body[data-split] .buttons,
 body[data-split] .side-controls,
-body[data-split] .side-controls .power-picker {
+body[data-split] .side-controls .chalkling-picker {
   max-width: calc(var(--map-w, 50vw) - 24px);
 }
 
@@ -318,7 +318,7 @@ body[data-split] .side-controls button {
   font-size: 12px;
 }
 
-body[data-split] .side-controls .power-picker {
+body[data-split] .side-controls .chalkling-picker {
   top: 52px;
 }
 
@@ -329,12 +329,12 @@ body[data-split] .side-controls {
 body[data-split='left'] .hud,
 body[data-split='left'] .buttons,
 body[data-split='left'] .side-controls[data-side='left'],
-body[data-split='left'] .side-controls[data-side='left'] .power-picker {
+body[data-split='left'] .side-controls[data-side='left'] .chalkling-picker {
   left: calc(100vw - var(--map-w, 50vw) + 12px);
 }
 
 /* Starts a new row in the chalkling picker (the Command buttons). */
-.side-controls .power-picker .picker-break {
+.side-controls .chalkling-picker .picker-break {
   flex-basis: 100%;
   height: 0;
 }

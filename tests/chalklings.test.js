@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createDuel, addStroke, setOrder, mainWard } from '../src/engine/duel.js';
-import { measureCreature } from '../src/engine/chalklings.js';
+import { measureCreature, speedFor } from '../src/engine/chalklings.js';
 import { sanitizeAction } from '../src/engine/actions.js';
 import { stickFigure, beetle, urchin, turtle, centipede } from '../src/data/creatures.js';
 import { dummyCirclePoints } from '../src/controllers/dummy.js';
@@ -23,31 +23,72 @@ function duel() {
   return state;
 }
 
-// How much a role boosted a stat compared to a plain chalkling of the same detail.
+// How much shape boosted a stat compared to a plain chalkling of the same detail.
 const biteBoost = (c) => c.bite / (C.baseBite + C.bitePerDetail * c.detail);
 const healthBoost = (c) => c.max / (C.baseHealth + C.healthPerDetail * c.detail);
-const speedBoost = (c) => c.speed / (C.baseSpeed / (1 + C.slowPerDetail * c.detail));
 
 // --- Grading -------------------------------------------------------------------------
 
-test('what a creature looks like decides its role', () => {
-  assert.equal(measureCreature(urchin(0, 0), C).role, 'attacker');
-  assert.equal(measureCreature(turtle(0, 0), C).role, 'defender');
-  assert.equal(measureCreature(centipede(0, 0), C).role, 'runner');
+test('what a creature looks like decides whether it is pointy or round', () => {
+  assert.equal(measureCreature(urchin(0, 0), C).role, 'attacker'); // pointy
+  assert.equal(measureCreature(turtle(0, 0), C).role, 'defender'); // round
 });
 
-test('roles shift strength: attackers bite, defenders last, runners run', () => {
+test('rounder creatures have more health; pointier creatures bite harder', () => {
   const state = duel();
-  const spiky = makeChalklingBookWay(state, 'left', urchin(0, 0), { k: 1 });
-  const bulky = makeChalklingBookWay(state, 'left', turtle(0, 0), { k: 3 });
-  const leggy = makeChalklingBookWay(state, 'right', centipede(0, 0), { k: 1 });
-  assert.ok(biteBoost(spiky) > biteBoost(bulky) && biteBoost(spiky) > biteBoost(leggy));
-  assert.ok(healthBoost(bulky) > healthBoost(spiky) && healthBoost(bulky) > healthBoost(leggy));
-  assert.ok(speedBoost(leggy) > speedBoost(spiky) && speedBoost(leggy) > speedBoost(bulky));
+  const pointy = makeChalklingBookWay(state, 'left', urchin(0, 0), { k: 1 });
+  const round = makeChalklingBookWay(state, 'left', turtle(0, 0), { k: 3 });
+  assert.ok(biteBoost(pointy) > 1 && biteBoost(pointy) > biteBoost(round));
+  assert.ok(healthBoost(round) > 1 && healthBoost(round) > healthBoost(pointy));
 });
 
 test('more detail still means a stronger chalkling', () => {
   assert.ok(measureCreature(beetle(0, 0), C).detail > measureCreature(stickFigure(0, 0), C).detail * 2);
+});
+
+test("detail is about features, not chalk: the same drawing bigger isn't stronger, just slower", () => {
+  const small = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { r: 40 });
+  const big = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { r: 90 });
+  assert.ok(Math.abs(small.detail - big.detail) < 1e-9, `${small.detail} vs ${big.detail}`);
+  assert.ok(Math.abs(small.max - big.max) < 1e-6, 'same health');
+  assert.ok(big.speed < small.speed, 'more chalk is slower');
+});
+
+test('the more chalk a creature uses, the slower it is; less chalk, faster', () => {
+  assert.ok(speedFor(150, C) > speedFor(500, C) && speedFor(500, C) > speedFor(1500, C));
+  assert.ok(speedFor(1e9, C) >= C.minSpeed);
+  const quick = makeChalklingBookWay(duel(), 'left', stickFigure(0, 0));
+  const heavy = makeChalklingBookWay(duel(), 'left', beetle(0, 0));
+  assert.ok(quick.speed > heavy.speed);
+  assert.equal(heavy.speed, speedFor(measureCreature(heavy.strokes, C).ink, C));
+});
+
+test('drawing in the detail screen makes the same creature stronger', () => {
+  const normal = makeChalklingBookWay(duel(), 'left', urchin(0, 0));
+  const zoomed = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { detail: true });
+  assert.equal(zoomed.detailStrokes, zoomed.strokes.length);
+  assert.equal(normal.detailStrokes, 0);
+  assert.ok(Math.abs(zoomed.detail - normal.detail * C.detailScreenBonus) < 1e-9);
+  assert.ok(zoomed.max > normal.max && zoomed.bite > normal.bite);
+});
+
+test('the detail screen only takes strokes inside a holding circle', () => {
+  const state = duel();
+  const r = addStroke(state, 'left', S.line({ x1: 450, y1: 300, x2: 450, y2: 400 }), { detail: true });
+  assert.equal(r.accepted, false);
+  assert.match(r.result.reason, /detail screen/);
+});
+
+test('no limit on how many strokes go into a creature', () => {
+  const state = duel();
+  const { center, r } = chainAndCircle(state, 'left', 1);
+  let accepted = 0;
+  for (let i = 0; i < 40; i++) {
+    const y = center.y - r * 0.6 + i * ((r * 1.2) / 40);
+    if (addStroke(state, 'left', S.line({ x1: center.x - 20, y1: y, x2: center.x + 20, y2: y + 3 }), MAKING).accepted) accepted++;
+  }
+  assert.equal(accepted, 40);
+  assert.equal(state.wards.find((w) => w.holding).creature.length, 40);
 });
 
 // --- Making one, step by step ------------------------------------------------------------

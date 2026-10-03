@@ -37,10 +37,9 @@ export function chainAndCircle(state, side, k = 1, { chainLength = 90, r = 55 } 
 }
 
 // Step 3: draw the creature inside the circle.
-// powers: the power buttons picked while drawing it; detail: drawn in the detail screen.
-// control: 'remote', 'attack' or 'guard' (the Command buttons).
-export function drawCreature(state, side, strokes, center, r, powers = [], detail = false, control = 'remote') {
-  return fitInside(strokes, center, r).map((s) => addStroke(state, side, s, { ...MAKING, powers, detail, control }));
+// detail: drawn in the detail screen; control: 'remote', 'attack' or 'guard' (the Command buttons).
+export function drawCreature(state, side, strokes, center, r, detail = false, control = 'remote') {
+  return fitInside(strokes, center, r).map((s) => addStroke(state, side, s, { ...MAKING, detail, control }));
 }
 
 // Step 4: a path from the edge of the circle (or a chalkling) to `to`.
@@ -58,10 +57,10 @@ export function erase(state, side, at, seconds = 3.1) {
 }
 
 // All five steps. Returns the new chalkling (or null).
-export function makeChalklingBookWay(state, side, creature, { k = 1, to = null, r = 55, power = null, powers = power ? [power] : [], detail = false, control = 'remote' } = {}) {
+export function makeChalklingBookWay(state, side, creature, { k = 1, to = null, r = 55, detail = false, control = 'remote' } = {}) {
   const before = new Set(state.chalklings.map((c) => c.id));
   const { center, chainMid } = chainAndCircle(state, side, k, { r });
-  drawCreature(state, side, creature, center, r, powers, detail, control);
+  drawCreature(state, side, creature, center, r, detail, control);
   if (to) drawPath(state, side, center, r, to);
   erase(state, side, chainMid);
   return state.chalklings.find((c) => !before.has(c.id)) ?? null;

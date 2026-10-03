@@ -1,7 +1,6 @@
 // Everything a duelist can do, as plain data "actions":
 //   { type: 'stroke', points: [{x, y}, ...], making }       draw one line
 //                                   (making: true when Chalkling mode is on;
-//                                    powers: the chalkling powers picked, e.g. ['sword'];
 //                                    detail: true if drawn in the detail screen;
 //                                    control: 'remote' | 'attack' | 'guard', for a chalkling)
 //   { type: 'erase', at: {x, y} }                            erase the line there (takes 3 s)
@@ -15,13 +14,11 @@
 
 import { addStroke, setOrder, ORDERS } from './duel.js';
 import { eraseAction } from './erase.js';
-import { cleanPowers } from './powers.js';
 import { CONTROLS } from './chalklings.js';
 
 export function applyAction(state, side, action) {
   if (action.type === 'stroke') return addStroke(state, side, action.points, {
       making: !!action.making,
-      powers: cleanPowers(action.powers),
       detail: action.detail === true,
       control: CONTROLS.includes(action.control) ? action.control : 'remote',
     });
@@ -56,7 +53,6 @@ export function sanitizeAction(raw) {
       type: 'stroke',
       points,
       making: raw.making === true,
-      powers: cleanPowers(raw.powers),
       detail: raw.detail === true,
       control: CONTROLS.includes(raw.control) ? raw.control : 'remote',
     };

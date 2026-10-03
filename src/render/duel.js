@@ -6,7 +6,6 @@
 import { CONFIG } from '../config.js';
 import { drawChalk, cacheChalk, cacheChalkStrokes } from './board.js';
 import { NAMES } from './feedback.js';
-import { POWER_NAMES } from '../engine/powers.js';
 
 const R = CONFIG.render;
 
@@ -50,9 +49,7 @@ export class DuelRenderer {
       const top = topOf(thing.points ?? thing.strokes.flat());
       const text =
         e.kind === 'chalkling'
-          ? e.powers?.length
-            ? `It comes alive with ${e.powers.map((p) => POWER_NAMES[p]).join(' + ')}!`
-            : 'It comes alive!'
+          ? 'It comes alive!'
           : e.kind === 'vigor'
             ? `Vigor ${Math.round(e.quality * 100)}% · ${spikyText(e.spikiness)}`
             : `${thing.main ? 'Main circle' : NAMES[e.kind]} ${Math.round(e.quality * 100)}%`;
@@ -341,7 +338,8 @@ export function ordinal(n) {
   return `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
 }
 
-const ROLE_NAMES = { attacker: 'Attacker', defender: 'Defender', runner: 'Runner', balanced: 'All-rounder' };
+// Pointy creatures bite harder; round ones have more health.
+const ROLE_NAMES = { attacker: 'Pointy', defender: 'Round', balanced: 'All-rounder' };
 
 // How much chalk each duelist has left: a stick of chalk that wears down.
 function drawChalkMeters(ctx, state, world) {
@@ -385,13 +383,11 @@ function statusText(c) {
 }
 
 // A chalkling's facts, always shown above it: role and what it's doing,
-// its health bar, its detail, health, bite and speed, and its powers (each
-// with its share of the power level).
+// its health bar, and its detail, health, bite and speed.
 function drawFacts(ctx, c) {
   const line1 = `${ROLE_NAMES[c.role] ?? 'Chalkling'} · ${statusText(c)}`;
   const line2 = `detail ${(c.detail ?? 0).toFixed(1)}  health ${Math.max(1, Math.round(c.hp))}/${Math.round(c.max)}  bite ${c.bite.toFixed(0)}  speed ${Math.round(c.speed)}`;
-  const n = c.powers?.length ?? 0;
-  const line3 = n ? c.powers.map((p) => `${POWER_NAMES[p]} ×${(c.powerLevel / n).toFixed(1)}`).join('  ') : '';
+  const line3 = '';
   ctx.save();
   ctx.font = '600 12px system-ui, sans-serif';
   const w = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width, ctx.measureText(line3).width) + 14;

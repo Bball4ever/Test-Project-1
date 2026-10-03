@@ -140,19 +140,6 @@ test('there are ten bot levels, and each one beats the level below it', () => {
   }
 });
 
-test('bots from Apprentice up give their chalklings powers; the first two levels never do', () => {
-  const powersOf = (level) => {
-    const seen = new Set();
-    for (let seed = 1; seed <= 6; seed++) {
-      for (const e of botDuel(level, level, seed).placed) if (e.kind === 'chalkling' && e.owner === 'left') seen.add(e.powers?.length ? e.powers.join('+') : 'none');
-    }
-    return seen;
-  };
-  for (const level of ['beginner', 'student']) assert.ok([...powersOf(level)].every((p) => p === 'none'), level);
-  const smart = powersOf('grandmaster');
-  assert.ok(!smart.has('none') && smart.size >= 2, [...smart].join(','));
-});
-
 test('a Master stops drawing a chalkling to block a wave, then finishes the chalkling', () => {
   const state = createDuel();
   const bot = new BotController({ owner: 'right', level: 'master', seed: 9 });

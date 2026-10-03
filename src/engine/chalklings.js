@@ -1,11 +1,13 @@
 // Lines of Making: chalklings, little chalk creatures that walk and fight.
 //
-// The drawing itself is the creature's body. Its strength comes from how much
-// effort went into it (more chalk, more strokes, closed shapes), and its role
-// comes from what the drawing looks like:
-//   spiky  (claws, teeth: loose line ends and sharp corners) → attacker, bites harder
-//   bulky  (shells, round bodies: big closed shapes)         → defender, more health
-//   leggy  (long stretched body, lots of short strokes)      → runner, faster
+// The drawing itself is the creature's body. What makes it strong:
+//   detail   the separate features drawn (parts, closed shapes, corners, small
+//            parts; more in the detail screen): the most important thing,
+//            it raises both health and bite
+//   shape    round (big closed shapes: shells, bodies) → more health
+//            pointy (loose line ends, sharp corners: claws, teeth) → more bite
+//   chalk    how much chalk the drawing used: the more chalk, the slower it
+//            walks; a light, quick sketch is fast
 //
 // What a chalkling is doing is its "mode":
 //   held     chained to its maker, standing still (only defends itself)
@@ -20,7 +22,6 @@ import { closestOnSegment, sectionAt } from './collide.js';
 import { damageSection, damageWall, damageChalkling, emit } from './damage.js';
 import { obstaclesFor, findRoute, pointBlocked } from './route.js';
 import { depthIn, facingOf } from './territory.js';
-import { powerLevel, cleanPowers, applyPowerStats, biteOf, usePower, flies } from './powers.js';
 
 const REPLAN_TICKS = 30; // look for a fresh route twice a second
 
@@ -78,17 +79,16 @@ export function measureCreature(strokes, cc, detailFlags = []) {
     detail += features;
   });
   detail = Math.min(cc.maxDetail, detail);
-  const stretch = Math.max(w, h) / Math.min(w, h);
+  // Shape: how pointy (loose line ends, sharp corners) against how round (big
+  // closed shapes) the drawing is, as shares that add up to 1.
   const traits = {
     spiky: looseEnds * cc.spikePerLooseEnd + corners * cc.spikePerCorner,
-    bulky: Math.sqrt(area * cc.bulkPerArea),
-    // Short strokes only count as legs on a stretched-out body (otherwise they're spikes).
-    leggy: Math.max(0, stretch - 1.5) * cc.leggyPerStretch + (stretch > 2 ? shortStrokes * cc.leggyPerShortStroke : 0),
+    // How much of the creature's space its closed shapes fill (so drawing it bigger doesn't make it rounder).
+    bulky: (area / (size * size)) * cc.bulkPerFill,
   };
-  const total = traits.spiky + traits.bulky + traits.leggy || 1;
-  const shares = { spiky: traits.spiky / total, bulky: traits.bulky / total, leggy: traits.leggy / total };
-  const top = Object.entries(shares).sort((a, b) => b[1] - a[1])[0];
-  const role = top[1] < cc.balancedBelow ? 'balanced' : { spiky: 'attacker', bulky: 'defender', leggy: 'runner' }[top[0]];
+  const total = traits.spiky + traits.bulky || 1;
+  const shares = { spiky: total ? traits.spiky / total : 0.5, bulky: total ? traits.bulky / total : 0.5 };
+  const role = shares.spiky >= cc.leaningAbove ? 'attacker' : shares.bulky >= cc.leaningAbove ? 'defender' : 'balanced';
 
   return {
     ink,
@@ -102,7 +102,6 @@ export function measureCreature(strokes, cc, detailFlags = []) {
     corners,
     area,
     shortStrokes,
-    stretch,
     shares,
     role,
   };
@@ -151,13 +150,12 @@ export function orderFor(state, c) {
   return c.control === 'attack' || c.control === 'guard' ? c.control : state.orders[c.owner];
 }
 
-// powers: the powers picked while making it ([] for none); pc: CONFIG.powers.
 // control: 'remote' (default), 'attack' or 'guard' (see CONTROLS).
-export function makeChalkling(id, owner, strokes, measure, cc, order, powers = [], pc = null, control = 'remote') {
+export function makeChalkling(id, owner, strokes, measure, cc, order, control = 'remote') {
   if (!CONTROLS.includes(control)) control = 'remote';
-  // A role shifts strength toward one stat: an attacker's bite goes up,
-  // a defender's health goes up, a runner's speed goes up.
-  const boost = (share) => 1 - cc.roleBoost / 3 + cc.roleBoost * share;
+  // Shape shifts strength between health and bite: rounder → more health,
+  // pointier → more bite (an even mix leaves both as they are).
+  const boost = (share) => 1 + cc.shapeBoost * (share - 0.5);
   const health = (cc.baseHealth + cc.healthPerDetail * measure.detail) * boost(measure.shares.bulky);
   const c = {
     id,
@@ -173,7 +171,7 @@ export function makeChalkling(id, owner, strokes, measure, cc, order, powers = [
     hp: health,
     max: health,
     bite: (cc.baseBite + cc.bitePerDetail * measure.detail) * boost(measure.shares.spiky),
-    speed: (cc.baseSpeed / (1 + cc.slowPerDetail * measure.detail)) * boost(measure.shares.leggy),
+    speed: speedFor(measure.ink, cc),
     mode: 'order',
     control,
     order: control === 'remote' ? order : control,
@@ -183,14 +181,13 @@ export function makeChalkling(id, owner, strokes, measure, cc, order, powers = [
     chainId: null,
     action: 'idle', // walk | chew | fight | idle (for the renderer's animation)
     facing: owner === 'left' ? 1 : -1,
-    powers: pc ? cleanPowers(powers) : [],
-    powerLevel: 0, // the total; each power gets an equal share of it
   };
-  if (c.powers.length) {
-    c.powerLevel = powerLevel(measure.detail, pc);
-    applyPowerStats(c, pc);
-  }
   return c;
+}
+
+// The more chalk a creature is drawn with, the slower it walks.
+export function speedFor(ink, cc) {
+  return Math.max(cc.minSpeed, cc.fastSpeed / (1 + ink * cc.slowPerInk));
 }
 
 // Give a chalkling its command when its chain is erased.
@@ -221,7 +218,6 @@ export function stepChalklings(state, dt) {
   for (const c of state.chalklings) {
     if (c.gone || state.winner) continue;
     stepOne(state, c, dt);
-    if (c.powers?.length) usePower(state, c, dt);
   }
 }
 
@@ -265,7 +261,7 @@ function stepOne(state, c, dt) {
   if (c.mode === 'path') {
     while (c.pathIndex < c.path.length && distance(c.pos, c.path[c.pathIndex]) < mk.waypointReach) c.pathIndex++;
     // Where the path crosses a wall, aim for the first point past it (so it can go around).
-    const walls = { walls: flies(c) ? [] : state.walls.filter((w) => !w.gone), wards: [], clearance: c.radius + 2 };
+    const walls = { walls: state.walls.filter((w) => !w.gone), wards: [], clearance: c.radius + 2 };
     while (c.pathIndex < c.path.length - 1 && pointBlocked(c.path[c.pathIndex], walls)) c.pathIndex++;
     if (c.pathIndex >= c.path.length) {
       c.mode = 'order';
@@ -373,7 +369,7 @@ function touching(state, c, other) {
 function bite(state, c, foe, dt) {
   c.action = 'fight';
   c.facing = Math.sign(foe.pos.x - c.pos.x) || c.facing;
-  damageChalkling(state, foe, biteOf(state, c) * dt);
+  damageChalkling(state, foe, c.bite * dt);
 }
 
 // Fight back against an enemy that's right next to us. Returns true if it did.
@@ -425,7 +421,7 @@ function walkToward(state, c, goal, dt, chewAllWalls) {
 }
 
 function chew(state, c, blocker, dt) {
-  const amount = biteOf(state, c) * dt;
+  const amount = c.bite * dt;
   if (blocker.kind === 'wall') damageWall(state, blocker.thing, amount, blocker.point);
   else {
     const ward = blocker.thing;
@@ -438,7 +434,7 @@ function chew(state, c, blocker, dt) {
 function findBlocker(state, c, next) {
   let best = null;
   for (const wall of state.walls) {
-    if (wall.gone || flies(c)) continue; // winged chalklings fly over walls
+    if (wall.gone) continue;
     const now = closestOnSegment(c.pos, wall.from, wall.to).dist;
     const then = closestOnSegment(next, wall.from, wall.to);
     if (then.dist < c.radius && then.dist < now && (!best || then.dist < best.gap)) {

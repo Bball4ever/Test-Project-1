@@ -42,36 +42,19 @@ Press **Chalkling** (or M) first: while it's on, your strokes are chalkling part
 
 Any chalkling attacks an enemy chalkling that comes close, then carries on with what it was doing (a hunter stays on its target). Chalklings find their own way: they walk **around** walls and circles (using A* route-finding), and only chew through a wall if there's no way round. The enemy circle they're attacking is never avoided: they go straight for it.
 
-When a path ends (or if you didn't draw one), what the chalkling does depends on the **Command** you picked while making it (the row under the Powers buttons):
+When a path ends (or if you didn't draw one), what the chalkling does depends on the **Command** you picked while making it (the buttons that appear at the top in Chalkling mode):
 - **Remote** (the default): follows the **Attack / Guard** buttons, and changes when you press them.
 - **Always attack**: always marches on the enemy circle, whatever the buttons say.
 - **Always guard**: always guards your circle, whatever the buttons say.
 
 Its label says which: "Attacking (remote)", "Always guarding", and so on. After a hunt, it walks back to your side and waits (shown with a "?"). To give it a new command: in Chalkling mode, draw a line from a bind point to it (a new chain) and a new path from it, then erase the chain.
 
-**What it's good at depends on what you draw.**
-- **Spiky** drawings (claws, teeth, lots of loose line ends) are **attackers**: they bite harder.
-- **Bulky** drawings (shells, big round closed shapes) are **defenders**: they have more health.
-- **Long, leggy** drawings are **runners**: they're faster.
-- **Detail** makes any of them stronger (but slower). Detail counts the separate features you drew, not how much chalk they used: each part, closed shapes (heads, eyes, shells), sharp corners (claws, teeth) and small parts. Drawing the same creature bigger doesn't make it stronger; drawing more features does. Parts drawn in the **detail screen** count ×1.5. The chalkling's label shows its detail.
+**How strong it is depends on what you draw.** You can use as many strokes as you like.
+- **Detail matters most.** It raises both health and bite. Detail counts the separate features you drew, not how much chalk they used: each part, closed shapes (heads, eyes, shells), sharp corners (claws, teeth) and small parts. Drawing the same creature bigger doesn't make it stronger; drawing more features does. Parts drawn in the **detail screen** count ×1.5.
+- **Shape:** **rounder** creatures (big closed shapes: shells, round bodies) have **more health**; **pointier** ones (claws, teeth, loose line ends, sharp corners) **bite harder**. Labels say "Round", "Pointy" or "All-rounder".
+- **Chalk:** the more chalk a creature uses, the **slower** it walks; a light, quick sketch is **fast**. (A stick figure walks about 100, a big detailed drawing about 45.)
 
-## Chalkling powers
-
-While Chalkling mode is on, a row of **Powers** buttons appears at the top. Pick one or more before you draw the creature (the last part you draw decides, so you can change your mind until then). **The more detail in the creature, the stronger its powers:** power level = detail ÷ 4, from ×0.5 to ×3 (a stick figure is about ×0.6, a detailed beetle about ×2, and the same beetle drawn in the detail screen ×3).
-
-**Combining powers splits the strength:** one power gets the whole level, two powers get half each, three get a third each, and so on. (Wings always lets a chalkling fly over walls; only its speed boost is split.) The hint shows the detail and power level so far while you draw, and the label above the chalkling shows each power's share after.
-
-| Power | What it does at level L |
-| --- | --- |
-| Sword | Bites harder: bite × (1 + 0.5 L) |
-| Bow | Shoots an arrow every 1.2 s at the nearest enemy chalkling within 180 + 40 L, for 8 L damage |
-| Shield | Takes less damage: damage ÷ (1 + 0.5 L) |
-| Wings | Flies over walls, and speed × (1 + 0.15 L) |
-| Crown | Friends within 120 + 30 L bite × (1 + 0.15 L) |
-| Healer | Heals itself and friends within 150 by 4 L health a second |
-| Whirlwind | Much faster: speed × (1 + 0.3 L) |
-
-Bots use powers too, from level 3 up (see below).
+The hint shows the detail, shape and speed so far while you draw, and the label above the chalkling shows its detail, health, bite and speed.
 
 ## Split screen (vs. the dummy or a bot)
 
@@ -109,18 +92,18 @@ Pick **How many bots** on the start screen. With 2 or more it's a free-for-all o
 | --- | --- | --- |
 | 1 | Beginner | Very shaky and slow, aims anywhere, rarely blocks |
 | 2 | Student | A bit steadier and quicker |
-| 3 | Apprentice | Gives its chalklings a random power |
+| 3 | Apprentice | Steadier and quicker again |
 | 4 | Senior student | Draws a shield circle; aims at damaged spots; spikier chalklings |
 | 5 | Duelist | Steadier, quicker, blocks more |
-| 6 | Champion | Picks powers smartly: a Healer to back up its chalklings, a Bow against yours, else Bow or Shield |
+| 6 | Champion | Steadier, quicker, makes chalklings more often |
 | 7 | Tutor | Full defense (shield and a wall); aims at your weakest spot; beetle chalklings |
 | 8 | Professor | Steadier, quicker, blocks almost everything |
-| 9 | Master | Stops in the middle of a chalkling to block a wave, then carries on; bigger chalklings (stronger powers) |
-| 10 | Grand master | Also attacks while waiting for a chain to erase; biggest chalklings |
+| 9 | Master | Stops in the middle of a chalkling to block a wave, then carries on |
+| 10 | Grand master | Also attacks while waiting for a chain to erase; the fastest hand |
 
 Bots throw curved waves at your circle and spiky ones at your chalklings, and keep to the 8-wall limit. From Tutor (level 7) up, bots draw their chalklings in the detail screen, so their chalklings have more detail.
 
-The smart power choice came from testing: in bot-vs-bot duels **Bow** and **Shield** won far more often than the others, and **Wings** and **Whirlwind** actually lost more than having no power. Each level beats the one below it in at least 7 of 12 test duels. All the settings are in `src/config.js` under `bot.levels`.
+Each level beats the one below it in at least 7 of 12 test duels. All the settings are in `src/config.js` under `bot.levels`.
 - **Same screen:** two people on one touchscreen, each drawing on their own half at the same time.
 - **Online:** one player presses **Create room** and shares the 4-letter code; the other enters it and presses **Join**. For now this works between tabs on the computer running `npm start`.
 
@@ -146,12 +129,11 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 119 tests covering:
+There are 109 tests covering:
 - the recognizer
 - the duel engine (damage, how spiky waves are, walls stopping waves, the wall limit, breach)
 - bind points
-- chalklings (including finding their way around lines, and fighting nearby enemies)
-- chalkling powers (including detail grading, the detail screen bonus and split powers)
+- chalklings (detail, shape and chalk grading, finding their way around lines, fighting nearby enemies)
 - the chalk limit
 - the bots (including all ten levels ranking in order)
 - free-for-alls of 3 to 10 players (territories, knock-outs, last one standing)

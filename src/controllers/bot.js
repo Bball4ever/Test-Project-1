@@ -14,7 +14,6 @@ import { mainWard, wallCount } from '../engine/duel.js';
 import { depthIn, facingOf } from '../engine/territory.js';
 import { findDefense, layoutDefense } from '../data/defenses.js';
 import { stickFigure, beetle, urchin, turtle, mirror, fitInside } from '../data/creatures.js';
-import { POWERS } from '../engine/powers.js';
 
 const PEN_LIFT_MS = 120; // pause between strokes
 const CREATURES = { stick: stickFigure, beetle, urchin, turtle };
@@ -110,7 +109,7 @@ export class BotController {
           points: stroke.slice(0, Math.max(2, Math.ceil(t * stroke.length))),
         };
       } else {
-        act({ type: 'stroke', points: stroke, making: !!stepNow.making, powers: stepNow.powers ?? [], detail: !!stepNow.detail });
+        act({ type: 'stroke', points: stroke, making: !!stepNow.making, detail: !!stepNow.detail });
         done = true;
       }
     } else if (stepNow.kind === 'erase') {
@@ -440,7 +439,6 @@ export class BotController {
       let creature = CREATURES[this.level.creature](0, 0);
       if (foe.center.x < me.center.x) creature = mirror(creature, 0); // face the enemy
       creature = fitInside(creature, center, r * 0.92);
-      const power = this.choosePower(state);
 
       const toEnemy = norm({ x: foe.center.x - center.x, y: foe.center.y - center.y });
       const pathStart = { x: center.x + toEnemy.x * r * 0.92, y: center.y + toEnemy.y * r * 0.92 };
@@ -453,7 +451,7 @@ export class BotController {
           { kind: 'stroke', points: this.shaky(ring), making: true },
           { kind: 'check', test: (s) => s.wards.some((w) => w.owner === this.owner && w.holding) },
           // Top levels draw the creature in the detail screen (it counts for more).
-          ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true, powers: power ? [power] : [], detail: !!this.level.detailScreen })),
+          ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true, detail: !!this.level.detailScreen })),
           // A path straight at the enemy circle, unless that would run through
           // our own circle: then no path, and it marches there by itself.
           ...(hitCircle(pathStart, foe.center, me.center, me.radius + 10) ? [] : [{ kind: 'stroke', points: this.shaky(line(pathStart, foe.center)), making: true }]),
@@ -462,24 +460,6 @@ export class BotController {
       };
     }
     return null;
-  }
-
-  // Which power to give the next chalkling (null = none).
-  //   random: any power.
-  //   smart:  what works best in bot-vs-bot testing: a healer to back up two
-  //           or more of its own chalklings, otherwise a bow if your
-  //           chalklings are out, otherwise a bow or a shield, taking turns.
-  //   a power's name: always that one.
-  choosePower(state) {
-    const how = this.level.powers ?? 'none';
-    if (POWERS.includes(how)) return how;
-    if (how === 'random') return POWERS[Math.floor(this.rng() * POWERS.length)];
-    if (how !== 'smart') return null;
-    const mine = state.chalklings.filter((c) => !c.gone && c.owner === this.owner);
-    if (mine.length >= 2 && !mine.some((c) => c.powers?.includes('healer'))) return 'healer';
-    if (state.chalklings.some((c) => !c.gone && c.owner !== this.owner)) return 'bow';
-    this.madeCount = (this.madeCount ?? 0) + 1;
-    return this.madeCount % 2 ? 'bow' : 'shield';
   }
 
   strokePlan(points) {

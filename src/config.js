@@ -125,12 +125,11 @@ export const CONFIG = {
 
   // --- Lines of Making (chalklings) ---
   chalkling: {
-    maxStrokes: 16,
     minInk: 60, // total chalk (units of line) needed to make anything at all
     maxSize: 220, // a creature can't be bigger than this across
-    // "Detail" decides how strong a creature is (and how strong its powers
-    // are). It counts the separate features in the drawing, NOT how much
-    // chalk they used: each part, closed shapes (heads, eyes, shells), sharp
+    // "Detail" decides how strong a creature is: the most important thing.
+    // It counts the separate features in the drawing, NOT how much chalk they
+    // used: each part, closed shapes (heads, eyes, shells), sharp
     // corners (claws, teeth) and small parts. Parts drawn in the detail
     // screen count extra.
     detailPerStroke: 0.3,
@@ -139,29 +138,32 @@ export const CONFIG = {
     detailPerSmallPart: 0.15,
     smallPart: 0.3, // a part smaller than this fraction of the whole creature is "small"
     detailScreenBonus: 1.5, // features drawn in the detail screen × this
-    maxDetail: 15,
+    maxDetail: 30, // detail stops counting past this
     closedGapRatio: 0.15, // a stroke whose ends meet this closely is a closed shape
     minClosedInk: 12, // ...and is at least this long (so a dot doesn't count)
-    // Roles: what the drawing looks like shifts its strength around.
-    //   spiky (loose line ends, sharp corners: claws, teeth)  → attacker: stronger bite
-    //   bulky (big closed shapes: shells, round bodies)        → defender: more health
-    //   long and leggy (stretched body, lots of short strokes)  → runner: faster
+    // Shape shifts strength between health and bite:
+    //   pointy (loose line ends, sharp corners: claws, teeth) → more bite
+    //   round  (big closed shapes: shells, round bodies)      → more health
     cornerAngle: 1.1, // a bend sharper than this (radians, about 63°) is a "corner"
     spikePerLooseEnd: 0.35,
     spikePerCorner: 1,
-    bulkPerArea: 1 / 100, // closed area (square units) → bulk points, after a square root
-    leggyPerShortStroke: 1,
-    shortStroke: 45, // open strokes shorter than this count as legs (on a long body)
-    leggyPerStretch: 3, // per unit of length/width beyond 1.5
-    roleBoost: 0.9, // how much a role shifts stats (0 = roles don't matter)
-    balancedBelow: 0.45, // if no trait has this share, the chalkling is "balanced"
-    // Stats from detail.
+    bulkPerFill: 20, // round points for closed shapes filling the whole creature (a turtle's shell fills about 0.6)
+    shortStroke: 45, // (open strokes shorter than this count as short)
+    // A fully pointy creature's bite (or a fully round one's health) is ×(1 + shapeBoost/2),
+    // and the other stat ×(1 − shapeBoost/2). An even mix changes nothing.
+    shapeBoost: 0.9,
+    leaningAbove: 0.6, // over this share pointy (or round), it's called pointy (or round)
+    // Health and bite from detail.
     baseHealth: 20,
     healthPerDetail: 10,
     baseBite: 3, // damage per second when chewing or fighting
     bitePerDetail: 1,
-    baseSpeed: 100, // units per second; more detail makes it slower
-    slowPerDetail: 0.05,
+    // Speed from chalk: the more chalk in the drawing, the slower it walks.
+    // speed = fastSpeed ÷ (1 + chalk × slowPerInk), at least minSpeed. A quick
+    // stick figure (~150 chalk) walks about 100; a big detailed drawing (~1000) about 45.
+    fastSpeed: 160,
+    slowPerInk: 1 / 400,
+    minSpeed: 15,
     minRadius: 12,
     maxRadius: 60,
     // Behaviour.
@@ -170,32 +172,6 @@ export const CONFIG = {
     guardRange: 300, // guards defend this far from their own circle
     guardDistance: 70, // guards stand this far in front of their circle
     contactPad: 4,
-  },
-
-  // --- Chalkling powers ---
-  // Pick powers with the buttons while making a chalkling. The creature's
-  // detail sets how strong they are: power level = detail ÷ detailPerLevel,
-  // between minLevel and maxLevel (a quick stick figure is about ×0.6, a
-  // detailed beetle about ×2, drawn in the detail screen ×3). Pick two powers
-  // and each gets half the level; three, a third each; and so on.
-  powers: {
-    detailPerLevel: 4,
-    minLevel: 0.5,
-    maxLevel: 3,
-    // What each power does at level L.
-    swordBite: 0.5, // bite × (1 + swordBite × L)
-    bowRange: 180, // shoots enemy chalklings within bowRange + bowRangePerLevel × L
-    bowRangePerLevel: 40,
-    bowEveryMs: 1200, // one arrow this often
-    arrowDamage: 8, // × L per arrow
-    shieldBlock: 0.5, // damage taken ÷ (1 + shieldBlock × L)
-    wingSpeed: 0.15, // flies over walls; speed × (1 + wingSpeed × L)
-    crownRange: 120, // friends within crownRange + crownRangePerLevel × L bite harder
-    crownRangePerLevel: 30,
-    crownBite: 0.15, // their bite × (1 + crownBite × L)
-    healRange: 150, // heals itself and friends this close
-    healPerSecond: 4, // × L
-    whirlwindSpeed: 0.3, // speed × (1 + whirlwindSpeed × L)
   },
 
   // --- The chalk limit ---
@@ -237,9 +213,8 @@ export const CONFIG = {
     //   aim            random | damaged | weakest (which part of your circle it aims at)
     //   makeChance     how often it makes a chalkling instead of attacking
     //   creature       what it draws: stick | urchin | beetle
-    //   holdRadius     size of its holding circle: bigger creature, more chalk, stronger power
+    //   holdRadius     size of its holding circle (and so of its creature)
     //   defense        none | shield | full (bound shield + walls on bind points)
-    //   powers         none | random | smart (picks the power that fits the moment)
     //   interrupts     drops what it's drawing to block an incoming wave, then carries on
     //   multitask      attacks while waiting for a chain to be erased
     //   detailScreen   draws its chalklings in the detail screen (more detail)
@@ -249,49 +224,49 @@ export const CONFIG = {
         noise: 11, speed: 260, think: [2400, 3800],
         defendChance: 0.1, counterChance: 0.1, aim: 'random',
         makeChance: 0.08, creature: 'stick', holdRadius: 55,
-        defense: 'none', powers: 'none',
+        defense: 'none',
       },
       student: {
         name: 'Student',
         noise: 8, speed: 330, think: [1900, 3200],
         defendChance: 0.2, counterChance: 0.2, aim: 'random',
         makeChance: 0.1, creature: 'stick', holdRadius: 60,
-        defense: 'none', powers: 'none',
+        defense: 'none',
       },
       apprentice: {
         name: 'Apprentice',
         noise: 5.8, speed: 410, think: [1550, 2600],
         defendChance: 0.38, counterChance: 0.4, aim: 'random',
         makeChance: 0.13, creature: 'stick', holdRadius: 60,
-        defense: 'none', powers: 'random',
+        defense: 'none',
       },
       senior: {
         name: 'Senior student',
         noise: 5, speed: 450, think: [1400, 2400],
         defendChance: 0.45, counterChance: 0.5, aim: 'damaged',
         makeChance: 0.16, creature: 'urchin', holdRadius: 60,
-        defense: 'shield', powers: 'random',
+        defense: 'shield',
       },
       duelist: {
         name: 'Duelist',
         noise: 4, speed: 500, think: [1200, 2100],
         defendChance: 0.55, counterChance: 0.6, aim: 'damaged',
         makeChance: 0.18, creature: 'urchin', holdRadius: 60,
-        defense: 'shield', powers: 'random',
+        defense: 'shield',
       },
       champion: {
         name: 'Champion',
         noise: 3.2, speed: 560, think: [1050, 1800],
         defendChance: 0.68, counterChance: 0.7, aim: 'damaged',
         makeChance: 0.2, creature: 'urchin', holdRadius: 62,
-        defense: 'shield', powers: 'smart',
+        defense: 'shield',
       },
       tutor: {
         name: 'Tutor',
         noise: 2.5, speed: 620, think: [900, 1550],
         defendChance: 0.8, counterChance: 0.8, aim: 'weakest',
         makeChance: 0.21, creature: 'beetle', holdRadius: 64,
-        defense: 'full', powers: 'smart', detailScreen: true,
+        defense: 'full', detailScreen: true,
       },
       professor: {
         name: 'Professor',
@@ -299,21 +274,21 @@ export const CONFIG = {
         defendChance: 0.9, counterChance: 0.9, aim: 'weakest',
         makeChance: 0.22, creature: 'beetle', holdRadius: 66,
         defense: 'full', // its shield and one wall; the bottom bind point stays free for chains
-        powers: 'smart', detailScreen: true,
+        detailScreen: true,
       },
       master: {
         name: 'Master',
         noise: 1.3, speed: 760, think: [620, 1150],
         defendChance: 0.95, counterChance: 0.95, aim: 'weakest',
         makeChance: 0.24, creature: 'beetle', holdRadius: 72,
-        defense: 'full', powers: 'smart', detailScreen: true, interrupts: true,
+        defense: 'full', detailScreen: true, interrupts: true,
       },
       grandmaster: {
         name: 'Grand master',
         noise: 0.7, speed: 1050, think: [320, 620],
         defendChance: 0.98, counterChance: 0.98, aim: 'weakest',
         makeChance: 0.26, creature: 'beetle', holdRadius: 80,
-        defense: 'full', powers: 'smart', detailScreen: true, interrupts: true, multitask: true,
+        defense: 'full', detailScreen: true, interrupts: true, multitask: true,
       },
     },
   },

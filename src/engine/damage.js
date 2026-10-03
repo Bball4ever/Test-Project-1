@@ -53,11 +53,6 @@ export function damageWall(state, wall, amount, point) {
 }
 
 export function damageChalkling(state, c, amount) {
-  // A shield takes some of it (stronger shields take more). Its strength is
-  // its share of the power level (see powers.js; worked out here to avoid a
-  // circular import).
-  const n = c.powers?.length ?? 0;
-  if (n && c.powers.includes('shield')) amount /= 1 + (state.powerCfg.shieldBlock * c.powerLevel) / n;
   c.hp = Math.max(0, c.hp - amount);
   if (c.hp <= 0 && !c.gone) {
     c.gone = true;

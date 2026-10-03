@@ -15,8 +15,7 @@ import { CONFIG } from './config.js';
 import { createDuel, step, mainWard, SIDES } from './engine/duel.js';
 import { applyAction } from './engine/actions.js';
 import { erasableAt } from './engine/erase.js';
-import { POWER_NAMES, powerLevel } from './engine/powers.js';
-import { measureCreature } from './engine/chalklings.js';
+import { measureCreature, speedFor } from './engine/chalklings.js';
 import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
 import { BotController } from './controllers/bot.js';
@@ -52,7 +51,7 @@ let paused = false;
 let tryWithoutTouch = false;
 
 function makeSeat(kind, controller = null) {
-  return { kind, controller, live: null, eraser: false, making: false, detailPick: false, powers: [], control: 'remote', waves: 0 };
+  return { kind, controller, live: null, eraser: false, making: false, detailPick: false, control: 'remote', waves: 0 };
 }
 
 // --- Input ---------------------------------------------------------------------
@@ -97,8 +96,8 @@ const human = new HumanController(canvas, {
     // Strokes in the detail screen are always chalkling parts, and count extra.
     const detail = stroke.view?.name === 'detail';
     const making = session.seats[stroke.owner].making || detail;
-    const { powers, control } = session.seats[stroke.owner];
-    const action = { type: 'stroke', points: stroke.points, making, powers: making ? powers : [], detail, control };
+    const { control } = session.seats[stroke.owner];
+    const action = { type: 'stroke', points: stroke.points, making, detail, control };
     const { result } = act(stroke.owner, action, stroke.pointerType);
     if (result) lastStroke = { result, pointerType: stroke.pointerType, raw: stroke.points };
   },
@@ -266,7 +265,7 @@ function onNetMessage(msg) {
   } else if (msg.t === 'start' && session?.net) {
     session.cache = new Map();
     session.state = null;
-    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, detailPick: false, powers: [], control: 'remote', waves: 0 });
+    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, detailPick: false, control: 'remote', waves: 0 });
     beginDuel();
     showToast(`Duel on! You are on the ${session.mySide.toUpperCase()} half.`);
   } else if (msg.t === 'snap' && session?.net) {
@@ -479,7 +478,7 @@ function layoutViews() {
   const ward = detailWard();
   if ((ward?.id ?? null) !== shownDetail) {
     shownDetail = ward?.id ?? null;
-    updateControls(); // the power buttons show while a creature can be drawn
+    updateControls(); // the Command buttons show while a creature can be drawn
   }
   const detailRect = { x: drawX, y: top, w: W - half, h: H - top };
   const r = ward ? ward.radius * 1.08 : 0;
@@ -696,18 +695,6 @@ function toggleMaking(side) {
   updateControls();
 }
 
-// The powers the next chalkling gets. Press a power to add it or take it away
-// again; None clears them all. Each extra power splits the strength (two
-// powers: half each). Only matters for chalkling parts.
-function pickPower(side, power) {
-  const seat = session?.state && session.seats[side];
-  if (seat?.kind !== 'human') return;
-  if (!power) seat.powers = [];
-  else if (seat.powers.includes(power)) seat.powers = seat.powers.filter((p) => p !== power);
-  else seat.powers = [...seat.powers, power];
-  updateControls();
-}
-
 // How the next chalkling will be controlled: 'remote' (follows the Attack /
 // Guard buttons), or 'attack' / 'guard' (always does that, whatever the buttons say).
 function pickControl(side, control) {
@@ -739,10 +726,7 @@ function updateControls() {
     if (box.hidden) continue;
     box.querySelector('[data-act="eraser"]').classList.toggle('selected', seat.eraser);
     box.querySelector('[data-act="making"]').classList.toggle('selected', seat.making);
-    box.querySelector('.power-picker').hidden = !(seat.making || detailWard());
-    for (const b of box.querySelectorAll('[data-power]')) {
-      b.classList.toggle('selected', b.dataset.power ? seat.powers.includes(b.dataset.power) : !seat.powers.length);
-    }
+    box.querySelector('.chalkling-picker').hidden = !(seat.making || detailWard());
     for (const b of box.querySelectorAll('[data-control]')) b.classList.toggle('selected', b.dataset.control === seat.control);
     const detailBtn = box.querySelector('[data-act="detail"]');
     detailBtn.hidden = !isSplit();
@@ -816,16 +800,13 @@ function duelHint() {
   return `${where}Waves need 3+ humps: curved humps smash lines, spiky humps smash chalklings. Straight lines make walls (8 at most). To make a chalkling, press Chalkling (M).`;
 }
 
-// "Detail 6.2. Sword + Bow ×0.8 each so far (more detail, stronger). " for a
-// creature still being drawn.
-function powerSoFar(holding) {
+// "So far: detail 6.2, round (more health), speed 64. " for a creature still being drawn.
+function creatureSoFar(holding) {
   if (!holding.creature?.length) return '';
-  const { detail } = measureCreature(holding.creature, CONFIG.chalkling, holding.creatureDetail);
-  const text = `Detail ${detail.toFixed(1)}. `;
-  const powers = holding.powers ?? [];
-  if (!powers.length) return text;
-  const each = powerLevel(detail, CONFIG.powers) / powers.length;
-  return `${text}${powers.map((p) => POWER_NAMES[p]).join(' + ')} ×${each.toFixed(1)}${powers.length > 1 ? ' each' : ''} so far (more detail, stronger). `;
+  const cc = CONFIG.chalkling;
+  const m = measureCreature(holding.creature, cc, holding.creatureDetail);
+  const shape = { attacker: 'pointy (more bite)', defender: 'round (more health)', balanced: 'even mix' }[m.role];
+  return `So far: detail ${m.detail.toFixed(1)}, ${shape}, speed ${Math.round(speedFor(m.ink, cc))}. `;
 }
 
 // Step-by-step help while Chalkling mode is on.
@@ -835,11 +816,11 @@ function makingHint(state, side) {
   const holding = state.wards.find((w) => w.owner === side && w.holding);
   if (holding && !holding.creature?.length) {
     const zoom = isSplit() ? ' Tip: press Detail (F) and tap the circle to draw it big in the detail screen; detail there counts extra.' : '';
-    return `${steps} 3. Pick powers and a command above (Remote follows Attack/Guard; Always attack/guard ignores them), then draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.${zoom}`;
+    return `${steps} 3. Pick a command above (Remote follows Attack/Guard; Always attack/guard ignores them), then draw your chalkling inside the circle, in as many strokes as you like. More detail = stronger; rounder = more health, pointier = more bite; less chalk = faster.${zoom}`;
   }
-  const power = holding ? powerSoFar(holding) : '';
+  const sofar = holding ? creatureSoFar(holding) : '';
   if (holding && !state.paths.some((p) => p.holdingId === holding.id)) {
-    return `${steps} ${power}4. Add detail, or draw a path out of the circle to where it should go (end it on an enemy chalkling to hunt it).`;
+    return `${steps} ${sofar}4. Add detail, or draw a path out of the circle to where it should go (end it on an enemy chalkling to hunt it).`;
   }
   const held = state.chalklings.find((c) => c.owner === side && c.mode === 'held');
   if (held && !state.paths.some((p) => p.chalklingId === held.id)) return `${steps} Chained! Draw a new path from your chalkling.`;
@@ -922,7 +903,6 @@ for (const box of document.querySelectorAll('.side-controls')) {
   box.querySelector('[data-act="eraser"]').addEventListener('click', () => toggleEraser(side));
   box.querySelector('[data-act="making"]').addEventListener('click', () => toggleMaking(side));
   box.querySelector('[data-act="detail"]').addEventListener('click', () => toggleDetailPick(side));
-  for (const b of box.querySelectorAll('[data-power]')) b.addEventListener('click', () => pickPower(side, b.dataset.power));
   for (const b of box.querySelectorAll('[data-control]')) b.addEventListener('click', () => pickControl(side, b.dataset.control));
   box.querySelector('[data-act="attack"]').addEventListener('click', () => giveOrder(side, 'attack'));
   box.querySelector('[data-act="guard"]').addEventListener('click', () => giveOrder(side, 'guard'));

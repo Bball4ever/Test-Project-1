@@ -26,7 +26,7 @@ export const ORDERS = ['attack', 'guard'];
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
 // options.chalk: how much chalk each duelist starts with (CONFIG.chalk.supply).
-export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, powerCfg = CONFIG.powers, players = 2, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost } = {}) {
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, players = 2, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost } = {}) {
   const ids = playerIds(players);
   const { world, homes } = makeTerritories(ids, cfg);
   const each = (value) => Object.fromEntries(ids.map((id) => [id, typeof value === 'function' ? value(id) : value]));
@@ -34,7 +34,6 @@ export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, m
     cfg: world.width === cfg.world.width && world.height === cfg.world.height ? cfg : { ...cfg, world },
     chalkCfg,
     makeCfg,
-    powerCfg,
     players: ids, // everyone in the duel, e.g. ['left', 'right', 'p2']
     homes, // each player's home point; their territory is around it
     out: [], // players who have been breached, in order
@@ -65,10 +64,9 @@ export function mainWard(state, side) {
 // A duelist draws a stroke. Returns { accepted, result } where result is the
 // recognizer's verdict (turned into a dud if a duel rule rejects it).
 // making: true when the duelist has Chalkling mode on (see making.js).
-// powers: the chalkling powers picked with the buttons (making strokes only).
 // detail: true if it was drawn in the detail screen (always a making stroke).
 // control: how the chalkling will be controlled: 'remote', 'attack' or 'guard'.
-export function addStroke(state, owner, rawPoints, { making = false, powers = [], detail = false, control = 'remote' } = {}) {
+export function addStroke(state, owner, rawPoints, { making = false, detail = false, control = 'remote' } = {}) {
   if (detail) making = true;
   if (state.winner || !rawPoints.length || state.out.includes(owner)) return { accepted: false, result: null };
   const cfg = state.cfg;
@@ -84,7 +82,7 @@ export function addStroke(state, owner, rawPoints, { making = false, powers = []
   }
   state.chalk[owner] -= cost;
 
-  if (making) return addMakingStroke(state, owner, points, mainWard(state, owner), powers, detail, control);
+  if (making) return addMakingStroke(state, owner, points, mainWard(state, owner), detail, control);
 
   const reject = (reason) => {
     const dud = { ...result, type: 'dud', reason, guess: result.guess ?? null };
