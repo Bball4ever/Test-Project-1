@@ -92,7 +92,8 @@ export class Board {
   // means a bigger board with territory borders).
   setWorld(world, homes = null) {
     const players = homes ? Object.keys(homes).length : 2;
-    if (world.width === this.world.width && world.height === this.world.height && players === (this.homes ? Object.keys(this.homes).length : 2)) return;
+    const same = JSON.stringify(players > 2 ? homes : null) === JSON.stringify(this.homes);
+    if (world.width === this.world.width && world.height === this.world.height && same) return;
     this.world = { ...world };
     this.homes = players > 2 ? homes : null;
     this.resize();

@@ -77,6 +77,7 @@ Press **Eraser** (or E), then click one of your own lines. The eraser turns itse
 
 - **Practice dummy:** it draws a neat or sloppy circle and stands still. You can also pick a defense to trace.
 - **Bot:** ten levels (below), and **1 to 9 bots**. Bots draw like people do: point by point, with a shaky hand, through the same recognizer.
+- **Teams:** you and bot teammates against a team of bots (below).
 
 ## Free-for-all (2 to 9 bots)
 
@@ -87,6 +88,16 @@ Pick **How many bots** on the start screen. With 2 or more it's a free-for-all o
 - When a circle is breached, that player is **out** and everything they drew is wiped off the board. If it's you, the end screen says what place you came (for example "4th of 10"); press **Keep watching** to watch the rest of the battle, and the end screen comes back with the winner.
 - Chalklings on Attack go for the **nearest** enemy circle still standing. Bots attack the nearest enemy too, and smash walls in the way with curved waves.
 - With 1 bot it's the classic duel, left half against right half.
+
+## Teams (2 to 5 per team)
+
+Pick **Teams** and how many **Players per team**. It's you and your bot teammates against a team of bots, all at the level you picked.
+
+- One team lines up down the left half of the board and the other down the right half, facing each other. Each player still has their **own area** to draw in (dotted borders), their own chalk, circle and walls.
+- **Teammates can't hurt each other:** a teammate's wave passes through your circles and your chalklings, and chalklings ignore their own team. But **walls stop everyone's waves**, your teammates' included, just like your own: so watch where you put them.
+- Guards protect their own player's circle.
+- If your circle breaks, you're **out**, but your team plays on: press **Keep watching**. The **last team standing wins.**
+- Under every main circle is a tag: **You**, **Teammate** (cool colours) or **Enemy** (warm colours). On the split screen, the map is turned so your team is at the bottom and theirs at the top.
 
 ## Bot levels
 
@@ -131,7 +142,7 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 115 tests covering:
+There are 121 tests covering:
 - the recognizer
 - the duel engine (the start countdown and smallest main circle, damage, how spiky waves are, walls stopping waves, the wall limit, breach)
 - bind points
@@ -139,6 +150,7 @@ There are 115 tests covering:
 - the chalk limit
 - the bots (including all ten levels ranking in order)
 - free-for-alls of 3 to 10 players (territories, knock-outs, last one standing)
+- team games (no friendly damage, walls stopping teammates' waves, last team standing, bot teams playing out)
 - online play (two real connections, checking both see the same duel)
 
 Real strokes saved with **S** go into `tests/fixtures/recorded.json` and are checked on every run.

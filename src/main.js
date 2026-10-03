@@ -35,7 +35,7 @@ const hasTouch = navigator.maxTouchPoints > 0;
 // Choices from the start screen.
 // screen: 'right' or 'left' = split screen, drawing on that side; 'classic' = one board.
 // bots: how many bots to play against (1 to 9; 2 or more is a free-for-all).
-const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bots: '1', bind: '4', template: '', screen: 'right' };
+const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bots: '1', teamSize: '2', bind: '4', template: '', screen: 'right' };
 // Where the practice template sits until you draw your own main circle.
 const TEMPLATE_HOME = { center: { x: 380, y: 450 }, radius: 140 };
 
@@ -121,8 +121,10 @@ function startLocalDuel() {
   const bind = Number(choices.bind);
   const local = choices.mode === 'local';
   // Against bots there can be up to 9 of them (10 players in all).
-  const players = choices.mode === 'bot' ? 1 + Number(choices.bots) : 2;
-  const state = createDuel({ players, bindPoints: { left: bind, right: local ? bind : CONFIG.engine.defaultBindPoints } });
+  // In a team game, two teams of teamSize (you and your bot teammates against bots).
+  const teams = choices.mode === 'teams';
+  const players = choices.mode === 'bot' ? 1 + Number(choices.bots) : teams ? 2 * Number(choices.teamSize) : 2;
+  const state = createDuel({ players, teams, bindPoints: { left: bind, right: local ? bind : CONFIG.engine.defaultBindPoints } });
   const seats = { left: makeSeat('human') };
   for (const id of state.players.slice(1)) seats[id] = local ? makeSeat('human') : opponentSeat(id);
   session = {
@@ -154,7 +156,7 @@ function beginDuel() {
 }
 
 function opponentSeat(id) {
-  if (choices.mode === 'bot') {
+  if (choices.mode === 'bot' || choices.mode === 'teams') {
     const seed = Math.floor(Math.random() * 1e9);
     return makeSeat('bot', new BotController({ owner: id, level: choices.level, seed }));
   }
@@ -172,12 +174,25 @@ function showEnd() {
   } else if (state.winner === 'draw') {
     $('end-title').textContent = 'Out of chalk: a draw.';
     $('end-stats').textContent = `${secs} seconds. Both sides ran out of chalk without a breach.`;
-  } else if (mode !== 'local' && state.outReasons?.[me] === 'noCircle') {
+  } else if (mode !== 'local' && !state.teams && state.outReasons?.[me] === 'noCircle') {
     $('end-title').textContent = 'Too slow! No main circle in time.';
     $('end-stats').textContent = `You have ${CONFIG.engine.circleDeadlineMs / 1000} seconds at the start to draw your main circle (at least as big as the dashed ring).`;
   } else if (mode === 'local') {
     $('end-title').textContent = `Breach! The ${state.winner} player wins.`;
     $('end-stats').textContent = `${secs} seconds. Left threw ${seats.left.waves} Lines of Vigor, right threw ${seats.right.waves}.`;
+  } else if (state.teams && !state.winner) {
+    // Out, but your team is still in it.
+    $('end-title').textContent = state.outReasons.left === 'noCircle' ? 'Too slow! No main circle in time.' : 'You were breached.';
+    $('end-stats').textContent = `You're out, but your team plays on. Keep watching to see if they win.`;
+  } else if (state.teams) {
+    const mine = `team${state.teams.left}`;
+    const size = state.players.length / 2;
+    const level = CONFIG.bot.levels[choices.level].name;
+    const standing = state.players.filter((id) => !state.out.includes(id) && `team${state.teams[id]}` === state.winner).length;
+    $('end-title').textContent = state.winner === mine ? 'Your team wins!' : 'Your team was breached.';
+    const you = state.out.includes('left') ? 'You were knocked out along the way.' : 'You were still standing at the end.';
+    const waves = seats.left.waves;
+    $('end-stats').textContent = `${secs} seconds, ${size} against ${size} with ${level} bots. ${standing} of ${size} on the winning team made it. ${you} You threw ${waves} Line${waves === 1 ? '' : 's'} of Vigor.`;
   } else if (state.players?.length > 2) {
     // Free-for-all: what place you came.
     const n = state.players.length;
@@ -369,7 +384,7 @@ function frame(now) {
       if (view.empty) continue;
       board.beginView(view);
       // The chalk meters are shown once: on the map (or the one board).
-      renderer.draw(state, live, now, template, { meters: view.name === 'full', angle: view.angle ?? 0 });
+      renderer.draw(state, live, now, template, { meters: view.name === 'full', angle: view.angle ?? 0, me: keyboardSide() });
       if (target && view.name !== 'detail') markDetailCircle(board.ctx, target);
       drawCircleGuides(board.ctx, state);
       if (debug) drawDuelDebug(board.ctx, state);
@@ -476,9 +491,12 @@ function layoutViews() {
   const mapX = session.screen === 'right' ? 0 : half;
   const top = Math.round(H / 2);
   document.body.style.setProperty('--map-w', `${half}px`);
-  // The map is turned so that your home is at the bottom.
+  // The map is turned so that your home is at the bottom (in a team game, your
+  // team's side, with the enemy team at the top).
   const home = session.state.homes?.[keyboardSide()] ?? { x: width / 4, y: height / 2 };
-  const angle = Math.PI / 2 - Math.atan2(home.y - height / 2, home.x - width / 2);
+  const teams = session.state.teams;
+  const away = teams ? { x: teams[keyboardSide()] === 0 ? -1 : 1, y: 0 } : { x: home.x - width / 2, y: home.y - height / 2 };
+  const angle = Math.PI / 2 - Math.atan2(away.y, away.x);
   const map = makeView('map', { x: mapX, y: 0, w: half, h: H }, { x: 0, y: 0, w: width, h: height }, { zoom: camera.zoom, focus: camera.focus, pad: 8, angle });
   const mainRect = { x: drawX, y: 0, w: W - half, h: top };
   const main = makeView('main', mainRect, myArea(mainRect.w / mainRect.h), { pad: 6 });
@@ -587,13 +605,20 @@ function drawChalkStrip(ctx, rect, state) {
     ...(players.length > 2 ? [] : [['Enemy', me === 'left' ? 'right' : 'left']]),
   ];
   if (players.length > 2) {
-    // Free-for-all: how many are still in.
+    // Free-for-all (or teams): how many are still in.
     ctx.font = '600 11px system-ui, sans-serif';
     ctx.textBaseline = 'top';
     ctx.textAlign = 'right';
     ctx.fillStyle = 'rgba(235, 238, 228, 0.75)';
-    const left = players.length - (state.out?.length ?? 0);
-    ctx.fillText(`${left} of ${players.length} still in`, rect.x + rect.w - 10, rect.y + 24);
+    const inOf = (list) => list.filter((id) => !state.out?.includes(id)).length;
+    let text = `${inOf(players)} of ${players.length} still in`;
+    if (state.teams) {
+      // Team game: how many are still in on each side.
+      const mine = players.filter((id) => state.teams[id] === state.teams[me]);
+      const theirs = players.filter((id) => state.teams[id] !== state.teams[me]);
+      text = `Your team: ${inOf(mine)} of ${mine.length} in · Enemy team: ${inOf(theirs)} of ${theirs.length}`;
+    }
+    ctx.fillText(text, rect.x + rect.w - 10, rect.y + 24);
   }
   let x = rect.x + rect.w - 10;
   ctx.font = '600 11px system-ui, sans-serif';
@@ -751,7 +776,7 @@ function updateControls() {
 // The faint defense to trace, placed around your real circle once you've drawn it.
 function practiceTemplate() {
   const defense = choices.template && findDefense(choices.template);
-  if (!defense?.parts || !['dummy', 'bot'].includes(session.mode)) return null;
+  if (!defense?.parts || !['dummy', 'bot', 'teams'].includes(session.mode)) return null;
   const { state } = session;
   const main = mainWard(state, 'left');
   const anchor = main ? { center: main.center, radius: main.radius } : TEMPLATE_HOME;
@@ -804,6 +829,10 @@ function duelHint() {
   }
   if (template) return 'Trace the faint circle first: it becomes your main circle.';
   const big = 'at least as big as the dashed ring';
+  if (!main && state.teams) {
+    const size = state.players.length / 2;
+    return `${size} against ${size}! Quick: draw your main circle in your own area (${big}). Your teammates are the cool colours; the last team standing wins.`;
+  }
   if (!main && state.players?.length > 2) return `Free-for-all with ${state.players.length - 1} bots! Quick: draw your main circle in your territory (${big}). Last circle standing wins.`;
   if (!main) return `${where}Quick: draw your main circle on the ${side} half, ${big}. No circle when the countdown ends and you're out!`;
   return `${where}Waves need 3+ humps: curved humps smash lines, spiky humps smash chalklings. Straight lines make walls (8 at most). To make a chalkling, press Chalkling (M).`;

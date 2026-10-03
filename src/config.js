@@ -96,6 +96,7 @@ export const CONFIG = {
       spacing: 760, // about this far between neighbours' homes
       minRing: 450, // the ring is at least this big (so 3 players aren't cramped)
       margin: 520, // room between the ring and the board's edge
+      teamRow: 700, // in a team game, each pair facing each other gets a row this tall
     },
 
     // --- Lines of Warding ---
@@ -335,6 +336,11 @@ export const CONFIG = {
       p8: '190, 230, 110',
       p9: '215, 215, 215',
     },
+    // In a team game, each team's colours instead (cool for yours, warm for theirs).
+    sideColors: [
+      ['150, 220, 170', '130, 180, 250', '120, 220, 225', '190, 230, 110', '170, 200, 255'],
+      ['240, 150, 130', '245, 175, 100', '240, 215, 120', '240, 150, 200', '230, 120, 110'],
+    ],
     chalkWidth: 4, // px
     chalkStrands: 4, // thin lines layered to make one chalk line
     chalkGrain: 2, // px per chalk texture step (smaller = finer grain, more work)

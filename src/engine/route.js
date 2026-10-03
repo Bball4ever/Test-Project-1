@@ -8,6 +8,7 @@
 // Finally the route is straightened, skipping corners it can see past.
 
 import { closestOnSegment } from './collide.js';
+import { isFoe } from './territory.js';
 
 const CELL = 20; // grid square size, in board units
 const MAX_SEARCH = 6000; // give up after looking at this many squares
@@ -18,7 +19,7 @@ const MAX_SEARCH = 6000; // give up after looking at this many squares
 export function obstaclesFor(state, c, { wallsBlock = true, ignoreWardId = null, enemyWardsBlock = true } = {}) {
   const walls = wallsBlock ? state.walls.filter((w) => !w.gone) : [];
   const wards = state.wards.filter(
-    (w) => !w.gone && w.id !== ignoreWardId && (enemyWardsBlock || w.owner === c.owner),
+    (w) => !w.gone && w.id !== ignoreWardId && (enemyWardsBlock || !isFoe(state, c.owner, w.owner)),
   );
   return { walls, wards, clearance: c.radius + 2 };
 }

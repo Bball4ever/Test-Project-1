@@ -15,7 +15,7 @@ import { emit, otherSide, damageSection, damageWall, damageChalkling, knockOut }
 import { stepChalklings } from './chalklings.js';
 import { addMakingStroke, tidy } from './making.js';
 import { stepErasing } from './erase.js';
-import { makeTerritories, playerIds, onOwnSide, facingOf, alivePlayers } from './territory.js';
+import { makeTerritories, makeTeams, playerIds, onOwnSide, facingOf, alivePlayers, isFoe } from './territory.js';
 
 export { otherSide };
 export const SIDES = ['left', 'right'];
@@ -23,14 +23,16 @@ export const ORDERS = ['attack', 'guard'];
 
 // options.players: how many duelists (2 to 10). 2 is the classic duel, left
 // against right; with more it's a free-for-all on a bigger board (territory.js).
+// options.teams: true for a team game instead: two teams (players at even
+// places in the list against the odd ones), and the last team standing wins.
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
 // options.chalk: how much chalk each duelist starts with (CONFIG.chalk.supply).
 // options.circleDeadlineMs: how long everyone has to draw their main circle
 // (CONFIG.engine.circleDeadlineMs; Infinity for no deadline).
-export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, players = 2, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost, circleDeadlineMs = cfg.circleDeadlineMs } = {}) {
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, players = 2, teams = false, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost, circleDeadlineMs = cfg.circleDeadlineMs } = {}) {
   const ids = playerIds(players);
-  const { world, homes } = makeTerritories(ids, cfg);
+  const { world, homes } = makeTerritories(ids, cfg, teams);
   const each = (value) => Object.fromEntries(ids.map((id) => [id, typeof value === 'function' ? value(id) : value]));
   return {
     cfg: world.width === cfg.world.width && world.height === cfg.world.height ? cfg : { ...cfg, world },
@@ -38,6 +40,7 @@ export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, m
     makeCfg,
     players: ids, // everyone in the duel, e.g. ['left', 'right', 'p2']
     homes, // each player's home point; their territory is around it
+    teams: teams ? makeTeams(ids) : null, // team game: each player's team (0 or 1)
     out: [], // players who are out (breached, or no circle in time), in order
     outReasons: {}, // why each one is out: 'breach' or 'noCircle'
     circleDeadlineMs, // draw your main circle before this (ms of duel time) or you're out
@@ -48,7 +51,7 @@ export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, m
     bindPoints: each((id) => bindPoints[id] ?? cfg.defaultBindPoints),
     tick: 0,
     timeMs: 0,
-    winner: null, // the last player standing once the others are breached, or 'draw'
+    winner: null, // the last player standing once the others are breached ('team0' or 'team1' in a team game), or 'draw'
     wards: [], // Lines of Warding (circles)
     walls: [], // Lines of Forbiddance
     vigors: [], // Lines of Vigor in flight
@@ -219,12 +222,12 @@ function moveVigor(state, v, dt) {
     if (hit && (!first || hit.t < first.t)) first = { ...hit, wall };
   }
   for (const ward of state.wards) {
-    if (ward.gone || ward.owner === v.owner) continue; // a Vigor passes through its owner's own circles
+    if (ward.gone || !isFoe(state, v.owner, ward.owner)) continue; // a Vigor passes through its owner's (and teammates') circles
     const hit = hitCircle(from, to, ward.center, ward.radius);
     if (hit && (!first || hit.t < first.t)) first = { ...hit, ward };
   }
   for (const c of state.chalklings) {
-    if (c.gone || c.owner === v.owner) continue; // ...and its owner's own chalklings
+    if (c.gone || !isFoe(state, v.owner, c.owner)) continue; // ...and chalklings
     const hit = hitCircle(from, to, c.pos, c.radius);
     if (hit && (!first || hit.t < first.t)) first = { ...hit, chalkling: c };
   }

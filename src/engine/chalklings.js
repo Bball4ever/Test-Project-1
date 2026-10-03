@@ -21,7 +21,7 @@ import { pathLength, distance, resample } from '../recognizer/clean.js';
 import { closestOnSegment, sectionAt } from './collide.js';
 import { damageSection, damageWall, damageChalkling, emit } from './damage.js';
 import { obstaclesFor, findRoute, pointBlocked } from './route.js';
-import { depthIn, facingOf } from './territory.js';
+import { depthIn, facingOf, isFoe } from './territory.js';
 
 const REPLAN_TICKS = 30; // look for a fresh route twice a second
 
@@ -299,7 +299,7 @@ function stepOrder(state, c, dt) {
   const home = mainOf(state, c.owner);
   // The enemy circle it marches on: the nearest one still standing.
   const enemyMain = nearestEnemyMain(state, c);
-  const enemies = state.chalklings.filter((e) => e.owner !== c.owner && !e.gone);
+  const enemies = state.chalklings.filter((e) => isFoe(state, c.owner, e.owner) && !e.gone);
 
   let foe = null;
   let goal = null;
@@ -358,7 +358,7 @@ function closeEnemy(state, c) {
   const reach = state.chalkCfg.closeRange;
   return nearest(
     c.pos,
-    state.chalklings.filter((e) => e.owner !== c.owner && !e.gone && distance(e.pos, c.pos) < c.radius + e.radius + reach),
+    state.chalklings.filter((e) => isFoe(state, c.owner, e.owner) && !e.gone && distance(e.pos, c.pos) < c.radius + e.radius + reach),
   );
 }
 
@@ -374,7 +374,7 @@ function bite(state, c, foe, dt) {
 
 // Fight back against an enemy that's right next to us. Returns true if it did.
 function defendSelf(state, c, dt) {
-  const foe = state.chalklings.find((e) => e.owner !== c.owner && !e.gone && touching(state, c, e));
+  const foe = state.chalklings.find((e) => isFoe(state, c.owner, e.owner) && !e.gone && touching(state, c, e));
   if (foe) {
     bite(state, c, foe, dt);
     return true;
@@ -385,7 +385,7 @@ function defendSelf(state, c, dt) {
 
 // One step toward `goal`. Lines in the way block us. Enemy lines get chewed;
 // when chewAllWalls is on (following a path or hunting) we chew through any
-// wall, even our own. We walk around our own circles.
+// wall, even our own. We walk around our own (and teammates') circles.
 function walkToward(state, c, goal, dt, chewAllWalls) {
   const dist = distance(c.pos, goal);
   if (dist < 0.5) return;
@@ -399,7 +399,7 @@ function walkToward(state, c, goal, dt, chewAllWalls) {
     c.action = 'walk';
     return;
   }
-  const enemy = blocker.thing.owner !== c.owner;
+  const enemy = isFoe(state, c.owner, blocker.thing.owner);
   if (enemy || (blocker.kind === 'wall' && chewAllWalls)) {
     c.action = 'chew';
     chew(state, c, blocker, dt);
@@ -460,7 +460,7 @@ function findBlocker(state, c, next) {
 function nearestEnemyMain(state, c) {
   let best = null;
   for (const w of state.wards) {
-    if (!w.main || w.gone || w.owner === c.owner) continue;
+    if (!w.main || w.gone || !isFoe(state, c.owner, w.owner)) continue;
     if (!best || distance(c.pos, w.center) < distance(c.pos, best.center)) best = w;
   }
   return best;

@@ -65,10 +65,11 @@
           <span>Opponent:</span>
           <button class="pick selected" data-group="mode" data-value="dummy">Practice dummy</button>
           <button class="pick" data-group="mode" data-value="bot">Bot</button>
+          <button class="pick" data-group="mode" data-value="teams">Teams</button>
           <button class="pick" data-group="mode" data-value="local">Same screen</button>
           <button class="pick" data-group="mode" data-value="online">Online</button>
         </div>
-        <div class="choice wrap" id="level-choices" data-show="bot">
+        <div class="choice wrap" id="level-choices" data-show="bot teams">
           <span>Bot level:</span>
         </div>
         <div class="choice wrap" data-show="bot">
@@ -87,18 +88,30 @@
           With 2 or more bots it's a free-for-all on a bigger map: everyone against everyone, and the last circle
           standing wins.
         </p>
+        <div class="choice wrap" data-show="teams">
+          <span>Players per team:</span>
+          <button class="pick selected" data-group="teamSize" data-value="2">2</button>
+          <button class="pick" data-group="teamSize" data-value="3">3</button>
+          <button class="pick" data-group="teamSize" data-value="4">4</button>
+          <button class="pick" data-group="teamSize" data-value="5">5</button>
+        </div>
+        <p class="note" data-show="teams">
+          You and your bot teammates (cool colours) against a team of bots (warm colours).
+          Teammates' waves pass through each other's circles and chalklings, but walls stop everyone's. If your circle
+          breaks you're out, but your team plays on: the last team standing wins.
+        </p>
         <div class="choice" data-show="dummy">
           <span>Dummy's circle:</span>
           <button class="pick selected" data-group="dummy" data-value="neat">Neat</button>
           <button class="pick" data-group="dummy" data-value="sloppy">Sloppy</button>
         </div>
-        <div class="choice wrap" data-show="dummy bot">
+        <div class="choice wrap" data-show="dummy bot teams">
           <span>Your screen:</span>
           <button class="pick selected" data-group="screen" data-value="right">Draw on the right</button>
           <button class="pick" data-group="screen" data-value="left">Draw on the left</button>
           <button class="pick" data-group="screen" data-value="classic">One board</button>
         </div>
-        <p class="note" data-show="dummy bot">
+        <p class="note" data-show="dummy bot teams">
           Split screen: one half is the map (drag, scroll or pinch to look around); the other half is your drawing
           area on top and the <b>detail screen</b> below, for drawing chalklings big.
         </p>
@@ -108,7 +121,7 @@
           <button class="pick selected" data-group="bind" data-value="4">4</button>
           <button class="pick" data-group="bind" data-value="6">6</button>
         </div>
-        <div class="choice wrap" id="template-choices" data-show="dummy bot">
+        <div class="choice wrap" id="template-choices" data-show="dummy bot teams">
           <span>Trace a defense:</span>
           <button class="pick selected" data-group="template" data-value="">None</button>
         </div>
@@ -128,7 +141,7 @@
           <button id="btn-join">Join</button>
         </div>
         <p class="note" id="online-status" data-show="online"></p>
-        <div class="choice" data-show="dummy bot local">
+        <div class="choice" data-show="dummy bot teams local">
           <button id="btn-start" class="primary">Start duel</button>
         </div>
       </div>

@@ -20,7 +20,7 @@ import { emit } from './damage.js';
 import { buildSections } from './wards.js';
 import { boundIndex } from './bind.js';
 import { measureCreature, makeChalkling, command } from './chalklings.js';
-import { onOwnSide } from './territory.js';
+import { onOwnSide, isFoe } from './territory.js';
 
 const near = (a, b, d) => distance(a, b) <= d;
 
@@ -87,7 +87,7 @@ export function addPath(state, owner, points, origin) {
     y: Math.max(0, Math.min(height, p.y)),
   }));
   const end = clean[clean.length - 1];
-  const prey = state.chalklings.find((e) => e.owner !== owner && !e.gone && distance(end, e.pos) <= e.radius + mk.huntReach);
+  const prey = state.chalklings.find((e) => isFoe(state, owner, e.owner) && !e.gone && distance(end, e.pos) <= e.radius + mk.huntReach);
   // A new path replaces an older one from the same place.
   state.paths = state.paths.filter((p) => !(p.holdingId === origin.holdingId && p.chalklingId === origin.chalklingId));
   const path = { id: state.nextId++, kind: 'path', owner, points: clean, ...origin, huntId: prey?.id ?? null };

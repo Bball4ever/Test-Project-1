@@ -11,7 +11,7 @@ import { makeRng } from '../random.js';
 import { pathLength, resample } from '../recognizer/clean.js';
 import { hitSegment, hitCircle } from '../engine/collide.js';
 import { mainWard, wallCount } from '../engine/duel.js';
-import { depthIn, facingOf } from '../engine/territory.js';
+import { depthIn, facingOf, isFoe } from '../engine/territory.js';
 import { findDefense, layoutDefense } from '../data/defenses.js';
 import { stickFigure, beetle, urchin, turtle, mirror, fitInside } from '../data/creatures.js';
 
@@ -49,7 +49,7 @@ export class BotController {
   targetFoe(state) {
     let best = null;
     for (const w of state.wards) {
-      if (!w.main || w.gone || w.owner === this.owner) continue;
+      if (!w.main || w.gone || !isFoe(state, this.owner, w.owner)) continue;
       if (!best || dist(this.home, w.center) < dist(this.home, best.center)) best = w;
     }
     return best;
@@ -232,7 +232,7 @@ export class BotController {
   // `hit` is where it would first strike one of our circles (maybe a shield).
   incomingVigor(state, me) {
     for (const v of state.vigors) {
-      if (this.handled.has(v.id) || v.owner === this.owner) continue;
+      if (this.handled.has(v.id) || !isFoe(state, this.owner, v.owner)) continue;
       const ahead = { x: v.pos.x + v.vel.x * 3, y: v.pos.y + v.vel.y * 3 };
       if (!hitCircle(v.pos, ahead, me.center, me.radius)) continue;
       let hit = null;
@@ -250,7 +250,7 @@ export class BotController {
   incomingChalkling(state, me) {
     return state.chalklings.find(
       (c) =>
-        c.owner !== this.owner &&
+        isFoe(state, this.owner, c.owner) &&
         !this.handled.has(c.id) &&
         Math.hypot(c.pos.x - me.center.x, c.pos.y - me.center.y) < me.radius + 420,
     );
@@ -382,7 +382,7 @@ export class BotController {
   laneIsClear(state, foe, tip, target, dir) {
     const past = { x: target.x + dir.x * 2, y: target.y + dir.y * 2 };
     if (state.walls.some((w) => hitSegment(tip, past, w.from, w.to))) return false;
-    if (state.wards.some((w) => w !== foe && w.owner !== this.owner && hitCircle(tip, past, w.center, w.radius))) return false;
+    if (state.wards.some((w) => w !== foe && isFoe(state, this.owner, w.owner) && hitCircle(tip, past, w.center, w.radius))) return false;
     const first = hitCircle(tip, past, foe.center, foe.radius);
     return first && Math.hypot(first.point.x - target.x, first.point.y - target.y) < 25;
   }

@@ -9,6 +9,11 @@
 // is a bigger square, and the homes sit evenly around a ring, so each
 // territory is a slice of it. Player ids: 'left' and 'right' for the first
 // two, then 'p2', 'p3', … 'p9'.
+//
+// In a TEAM game there are two teams: the players at even places in the list
+// ('left', 'p2', 'p4', …) against the odd ones ('right', 'p3', …). The first
+// team lines up down the left half of the board and the second down the right
+// half, facing each other, one row per pair.
 
 export const MAX_PLAYERS = 10;
 
@@ -19,7 +24,18 @@ export function playerIds(count) {
 
 // The board size and everyone's home for these players.
 //   cfg: CONFIG.engine (world, territory settings)
-export function makeTerritories(players, cfg) {
+//   teams: true for a team game
+export function makeTerritories(players, cfg, teams = false) {
+  if (teams && players.length > 2) {
+    const rows = Math.ceil(players.length / 2);
+    const { width } = cfg.world;
+    const height = Math.max(cfg.world.height, rows * cfg.territory.teamRow);
+    const homes = {};
+    players.forEach((id, i) => {
+      homes[id] = { x: i % 2 === 0 ? width / 4 : (width * 3) / 4, y: (Math.floor(i / 2) + 0.5) * (height / rows) };
+    });
+    return { world: { width, height }, homes };
+  }
   if (players.length <= 2) {
     const { width, height } = cfg.world;
     return {
@@ -69,6 +85,8 @@ export function onOwnSide(state, owner, points, margin = state.cfg.sideMargin) {
 // The direction from a player's home toward the middle of the board: the way
 // they face. (With 2 players, that's straight at the opponent.)
 export function facingOf(state, owner) {
+  // In a team game everyone faces straight across at the other team.
+  if (state.teams) return { x: state.teams[owner] === 0 ? 1 : -1, y: 0 };
   const home = state.homes[owner];
   const dx = state.cfg.world.width / 2 - home.x;
   const dy = state.cfg.world.height / 2 - home.y;
@@ -79,4 +97,20 @@ export function facingOf(state, owner) {
 // Players still in the duel.
 export function alivePlayers(state) {
   return state.players.filter((id) => !state.out.includes(id));
+}
+
+// Which team each player is on (team games only): 0 or 1.
+export function makeTeams(players) {
+  return Object.fromEntries(players.map((id, i) => [id, i % 2]));
+}
+
+// Is `other` an enemy of `owner`? Everyone else is, except teammates.
+export function isFoe(state, owner, other) {
+  if (owner === other) return false;
+  return !state.teams || state.teams[owner] !== state.teams[other];
+}
+
+// The teams that still have someone in, e.g. [0, 1] (team games only).
+export function teamsStanding(state) {
+  return [...new Set(alivePlayers(state).map((id) => state.teams[id]))];
 }

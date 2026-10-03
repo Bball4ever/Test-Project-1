@@ -26,7 +26,7 @@ export function damageSection(state, ward, index, amount, point) {
   }
 }
 
-// A breached duelist is out. When only one is left, they've won. Until then,
+// A breached duelist is out. When only one is left (or one team), they've won. Until then,
 // everything the breached duelist drew is wiped off the board.
 // reason: 'breach', or 'noCircle' (didn't draw a main circle in time).
 export function knockOut(state, owner, reason = 'breach') {
@@ -34,7 +34,13 @@ export function knockOut(state, owner, reason = 'breach') {
   state.outReasons[owner] = reason;
   const alive = state.players.filter((id) => !state.out.includes(id));
   emit(state, { type: 'out', owner, reason, place: alive.length + 1, point: { ...state.homes[owner] } });
-  if (alive.length === 1) {
+  // Team game: when everyone left is on one team, that team has won.
+  const teamsLeft = state.teams ? new Set(alive.map((id) => state.teams[id])) : null;
+  if (teamsLeft?.size === 1) {
+    state.winner = `team${[...teamsLeft][0]}`;
+    return;
+  }
+  if (!state.teams && alive.length === 1) {
     state.winner = alive[0];
     return;
   }

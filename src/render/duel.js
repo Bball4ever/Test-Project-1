@@ -99,7 +99,8 @@ export class DuelRenderer {
       fx.push({ kind: 'label', text: 'No circle in time: out!', x: e.point.x, y: e.point.y, rise: 20, born: now, life: 3500, color: R.dudColor, size: 28 });
     } else if (e.type === 'out' && e.place) {
       // In a game of 3 or more, a breached player is out, with their place.
-      if (state.players?.length > 2) fx.push({ kind: 'label', text: `Out: ${ordinal(e.place)} place`, x: e.point.x, y: e.point.y - 150, rise: 20, born: now, life: 3500, color: R.dudColor, size: 30 });
+      if (state.teams) fx.push({ kind: 'label', text: 'Out!', x: e.point.x, y: e.point.y - 150, rise: 20, born: now, life: 3500, color: R.dudColor, size: 30 });
+      else if (state.players?.length > 2) fx.push({ kind: 'label', text: `Out: ${ordinal(e.place)} place`, x: e.point.x, y: e.point.y - 150, rise: 20, born: now, life: 3500, color: R.dudColor, size: 30 });
     } else if (e.type === 'chalklingDied') {
       fx.push(dust(e.point, now, 28, 90));
     } else if (e.type === 'wallBroken') {
@@ -117,7 +118,9 @@ export class DuelRenderer {
   // drafts: chalklings still being drawn in Making mode (lists of strokes).
   // meters: false to leave out the chalk meters (shown once, in the map).
   // angle: how far the view is turned (see makeView), so text can stay upright.
-  draw(state, liveStrokes, now, template = null, { meters = true, angle = 0 } = {}) {
+  // me: whose screen this is (in a team game, circles are tagged You, Teammate or Enemy).
+  draw(state, liveStrokes, now, template = null, { meters = true, angle = 0, me = 'left' } = {}) {
+    teams = state.teams ?? null;
     const ctx = this.board.ctx;
     this.angle = angle;
     if (template) drawTemplate(ctx, template);
@@ -157,6 +160,7 @@ export class DuelRenderer {
       if (ward.main) {
         drawBindPoints(ctx, ward);
         upright(ctx, ward.center, this.angle, () => drawDuelist(ctx, ward.center));
+        if (teams) upright(ctx, ward.center, this.angle, () => drawTeamTag(ctx, ward, me));
       }
       if (ward.creature?.length) {
         const pic = this.cached(`cr${ward.id}:${ward.creature.length}`, null, ward.id * 31, R.makingColor, ward.creature);
@@ -333,8 +337,13 @@ function spikyText(s) {
 
 // Each player's colour (chalkling shadows, label borders, health bars).
 function teamColor(id) {
+  if (teams) {
+    const mates = Object.keys(teams).filter((other) => teams[other] === teams[id]);
+    return R.sideColors[teams[id]][mates.indexOf(id)] ?? R.chalkColor;
+  }
   return R.teamColors[id] ?? R.chalkColor;
 }
+let teams = null; // the duel's teams, if it's a team game (set by draw())
 
 export function ordinal(n) {
   return `${n}${n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th'}`;
@@ -577,6 +586,18 @@ function topOf(points) {
 
 // Draw something (text, a label box) the right way up on a turned view,
 // by turning it back around the point `at`.
+// Under each main circle in a team game: whose it is, in their colour.
+function drawTeamTag(ctx, ward, me) {
+  const text = ward.owner === me ? 'You' : teams[ward.owner] === teams[me] ? 'Teammate' : 'Enemy';
+  ctx.save();
+  ctx.font = '600 26px system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = `rgba(${teamColor(ward.owner)}, 0.9)`;
+  ctx.fillText(text, ward.center.x, ward.center.y + ward.radius + 14);
+  ctx.restore();
+}
+
 function upright(ctx, at, angle, draw) {
   if (!angle) return draw();
   ctx.save();
