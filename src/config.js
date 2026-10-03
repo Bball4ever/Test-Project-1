@@ -100,6 +100,10 @@ export const CONFIG = {
     // --- Bind points ---
     bindPointChoices: [2, 4, 6],
     defaultBindPoints: 4,
+    // At the start everyone has this long to draw their main circle. Anyone
+    // who hasn't by then is out.
+    circleDeadlineMs: 5000,
+    minMainRadius: 90, // a main circle must be at least this big (radius)
     touchTolerance: 18, // a line within this many units of the main circle "touches" it
     bindTolerance: 26, // a touch this close (along the circle) to a bind point is "bound"
     boundBonus: 0.5, // bound lines and circles get +50% strength

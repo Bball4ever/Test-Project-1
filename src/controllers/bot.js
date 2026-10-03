@@ -27,7 +27,8 @@ export class BotController {
     this.rng = makeRng(seed);
     this.plan = null; // what it's drawing right now
     this.saved = null; // a plan put aside to block a wave (top levels)
-    this.waitUntil = 500 + this.thinkTime(); // ms of duel time
+    this.thinkTime(); // (keeps its random choices the same as before the countdown existed)
+    this.waitUntil = 300; // ms of duel time: draw the main circle straight away (there's a countdown)
     this.handled = new Set(); // ids of things it has already reacted to
     this.defenseDone = 0; // how many parts of its defense it has built
     this.state = null; // the duel it's in (set on the first update)
@@ -74,8 +75,11 @@ export class BotController {
       return this.continuePlan(state, act, now);
     }
 
-    // While "thinking", it still glances at incoming danger every so often.
-    if (now >= this.waitUntil || (state.tick % 6 === 0 && this.urgent(state))) {
+    // No main circle yet (the first one didn't count)? Try again at once:
+    // there's a countdown. Otherwise it thinks first, but still glances at
+    // incoming danger every so often.
+    const noCircle = now >= 300 && !mainWard(state, this.owner);
+    if (noCircle || now >= this.waitUntil || (state.tick % 6 === 0 && this.urgent(state))) {
       let plan = this.decide(state);
       // Can it afford all that chalk? If not, don't start.
       const cost = plan?.steps.reduce((sum, s) => sum + (s.kind === 'stroke' ? pathLength(s.points) : 0), 0) ?? 0;

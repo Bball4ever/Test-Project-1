@@ -95,6 +95,8 @@ export class DuelRenderer {
       fx.push(label(e.point, 'Creature lost', now, R.dudColor));
     } else if (e.type === 'arrow') {
       fx.push({ kind: 'arrow', from: e.from, to: e.to, born: now, life: 350 });
+    } else if (e.type === 'out' && e.reason === 'noCircle') {
+      fx.push({ kind: 'label', text: 'No circle in time: out!', x: e.point.x, y: e.point.y, rise: 20, born: now, life: 3500, color: R.dudColor, size: 28 });
     } else if (e.type === 'out' && e.place) {
       // In a game of 3 or more, a breached player is out, with their place.
       if (state.players?.length > 2) fx.push({ kind: 'label', text: `Out: ${ordinal(e.place)} place`, x: e.point.x, y: e.point.y - 150, rise: 20, born: now, life: 3500, color: R.dudColor, size: 30 });

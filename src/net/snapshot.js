@@ -18,6 +18,10 @@ export function makeSnapshot(state, sent) {
     erasing: state.erasing,
     chalk: state.chalk,
     chalkStart: state.chalkStart,
+    circleDeadlineMs: state.circleDeadlineMs,
+    out: state.out,
+    outReasons: state.outReasons,
+    drawReason: state.drawReason ?? null,
   };
   for (const list of LISTS) {
     snap[list] = state[list].map((thing) => {

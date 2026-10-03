@@ -267,3 +267,43 @@ test('the same strokes always give the same duel', () => {
   };
   assert.equal(play(), play());
 });
+
+// --- The 5-second countdown and the smallest main circle --------------------------------
+
+test('no main circle when the countdown ends: you are out and the other player wins', () => {
+  const state = createDuel();
+  addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: 110, noise: 1 }));
+  run(state, (E.circleDeadlineMs - 100) / E.stepMs);
+  assert.equal(state.winner, null, 'still time');
+  run(state, 200 / E.stepMs);
+  assert.equal(state.winner, 'left');
+  assert.equal(state.outReasons.right, 'noCircle');
+  assert.equal(addStroke(state, 'right', S.circle({ cx: 1250, cy: 450, r: 110 })).accepted, false, 'too late');
+});
+
+test('if nobody draws a main circle in time, it is a draw', () => {
+  const state = createDuel();
+  run(state, (E.circleDeadlineMs + 100) / E.stepMs);
+  assert.equal(state.winner, 'draw');
+  assert.equal(state.drawReason, 'noCircle');
+});
+
+test('in a free-for-all, everyone without a circle in time is out; the rest play on', () => {
+  const state = createDuel({ players: 4 });
+  for (const id of ['left', 'p2']) {
+    const h = state.homes[id];
+    addStroke(state, id, S.circle({ cx: h.x, cy: h.y, r: 110, noise: 1 }));
+  }
+  run(state, (E.circleDeadlineMs + 100) / E.stepMs);
+  assert.deepEqual([...state.out].sort(), ['p3', 'right']);
+  assert.equal(state.winner, null);
+});
+
+test('a main circle has to be big enough; small circles are fine later (shields)', () => {
+  const state = createDuel();
+  const small = addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: E.minMainRadius - 25, noise: 1 }));
+  assert.equal(small.accepted, false);
+  assert.match(small.result.reason, /too small/);
+  assert.ok(addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: E.minMainRadius + 15, noise: 1 })).accepted);
+  assert.ok(addStroke(state, 'left', S.circle({ cx: 350, cy: 300, r: 45, noise: 1 })).accepted, 'a small shield circle is fine');
+});

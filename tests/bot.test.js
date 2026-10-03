@@ -106,8 +106,9 @@ test('a professor walls off an incoming Vigor', () => {
   const bot = new BotController({ owner: 'right', level: 'professor', seed: 9 });
   const act = (action) => applyAction(state, 'right', action);
   addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: 110, noise: 1 }));
-  // Let the bot draw its circle and its defense.
-  for (let i = 0; i < 60 * 8; i++) {
+  // Let the bot draw its circle and its defense, then wait until it isn't in
+  // the middle of drawing something (Professors can't stop halfway to block).
+  for (let i = 0; i < 60 * 30 && (bot.defenseDone < 2 || bot.plan); i++) {
     bot.update(state, act);
     step(state);
   }

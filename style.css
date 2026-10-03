@@ -338,3 +338,29 @@ body[data-split='left'] .side-controls[data-side='left'] .chalkling-picker {
   flex-basis: 100%;
   height: 0;
 }
+
+/* The 5-second countdown to draw your main circle. Placed by the game over
+   your drawing area; clicks pass straight through it. */
+#countdown {
+  position: fixed;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  text-align: center;
+  color: rgb(240, 230, 200);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
+}
+
+#countdown b {
+  display: block;
+  font-size: 96px;
+  line-height: 1;
+}
+
+#countdown span {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+#countdown.done b {
+  color: rgb(150, 220, 170);
+}

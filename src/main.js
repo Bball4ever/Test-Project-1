@@ -165,9 +165,16 @@ function showEnd() {
   endShown = true;
   const { state, seats, mode } = session;
   const secs = (state.timeMs / 1000).toFixed(1);
-  if (state.winner === 'draw') {
+  const me = mode === 'online' ? session.mySide : 'left';
+  if (state.winner === 'draw' && state.drawReason === 'noCircle') {
+    $('end-title').textContent = 'Nobody drew a circle in time: a draw.';
+    $('end-stats').textContent = `You have ${CONFIG.engine.circleDeadlineMs / 1000} seconds at the start to draw your main circle.`;
+  } else if (state.winner === 'draw') {
     $('end-title').textContent = 'Out of chalk: a draw.';
     $('end-stats').textContent = `${secs} seconds. Both sides ran out of chalk without a breach.`;
+  } else if (mode !== 'local' && state.outReasons?.[me] === 'noCircle') {
+    $('end-title').textContent = 'Too slow! No main circle in time.';
+    $('end-stats').textContent = `You have ${CONFIG.engine.circleDeadlineMs / 1000} seconds at the start to draw your main circle (at least as big as the dashed ring).`;
   } else if (mode === 'local') {
     $('end-title').textContent = `Breach! The ${state.winner} player wins.`;
     $('end-stats').textContent = `${secs} seconds. Left threw ${seats.left.waves} Lines of Vigor, right threw ${seats.right.waves}.`;
@@ -182,7 +189,6 @@ function showEnd() {
     const winner = state.winner && !won ? ` The last circle standing: ${playerName(state.winner)}.` : '';
     $('end-stats').textContent = `${secs} seconds against ${bots}. You threw ${waves} Line${waves === 1 ? '' : 's'} of Vigor.${winner}`;
   } else {
-    const me = mode === 'online' ? session.mySide : 'left';
     const waves = seats[me].waves;
     const against = { dummy: `the ${choices.dummy} dummy`, bot: `the ${CONFIG.bot.levels[choices.level].name} bot`, online: 'your online opponent' }[mode];
     $('end-title').textContent = state.winner === me ? 'Breach! You win.' : 'You were breached.';
@@ -365,6 +371,7 @@ function frame(now) {
       // The chalk meters are shown once: on the map (or the one board).
       renderer.draw(state, live, now, template, { meters: view.name === 'full', angle: view.angle ?? 0 });
       if (target && view.name !== 'detail') markDetailCircle(board.ctx, target);
+      drawCircleGuides(board.ctx, state);
       if (debug) drawDuelDebug(board.ctx, state);
       board.endView();
     }
@@ -760,6 +767,7 @@ function updateHud() {
   else if (session?.state) hint = duelHint();
   else if (session?.net) hint = 'Waiting for an opponent...';
   if ($('hint').textContent !== hint) $('hint').textContent = hint;
+  updateCountdown();
   if (debug) $('debug-panel').textContent = debugPanelText(lastStroke, session?.state);
   updatePauseButton();
 }
@@ -795,8 +803,9 @@ function duelHint() {
       : 'Defense complete! Now attack.';
   }
   if (template) return 'Trace the faint circle first: it becomes your main circle.';
-  if (!main && state.players?.length > 2) return `Free-for-all with ${state.players.length - 1} bots! Draw your main circle in your territory (the bottom of the map). Last circle standing wins.`;
-  if (!main) return `${where}Draw your main circle on the ${side} half.`;
+  const big = 'at least as big as the dashed ring';
+  if (!main && state.players?.length > 2) return `Free-for-all with ${state.players.length - 1} bots! Quick: draw your main circle in your territory (${big}). Last circle standing wins.`;
+  if (!main) return `${where}Quick: draw your main circle on the ${side} half, ${big}. No circle when the countdown ends and you're out!`;
   return `${where}Waves need 3+ humps: curved humps smash lines, spiky humps smash chalklings. Straight lines make walls (8 at most). To make a chalkling, press Chalkling (M).`;
 }
 
@@ -829,6 +838,57 @@ function makingHint(state, side) {
     return `${steps} 1. Draw a straight line from a green bind point (or from one to your waiting chalkling to give it a new command).`;
   }
   return `${steps} 1. Draw a straight line out from one of the green bind points on your circle.`;
+}
+
+// --- The countdown ------------------------------------------------------------------
+// At the start, everyone has 5 seconds to draw their main circle; anyone who
+// hasn't by then is out. A big countdown shows over your drawing area, and a
+// dashed ring at each player's home shows the smallest circle that counts.
+
+function updateCountdown() {
+  const el = $('countdown');
+  const state = session?.state;
+  const left = state ? (state.circleDeadlineMs ?? Infinity) - state.timeMs : -1;
+  const show = state && !state.winner && left > 0 && Number.isFinite(left);
+  if (!show) {
+    el.hidden = true;
+    return;
+  }
+  const side = keyboardSide();
+  const done = session.mode === 'local' ? Object.keys(session.seats).every((s) => mainWard(state, s)) : !!mainWard(state, side);
+  el.hidden = false;
+  el.classList.toggle('done', done);
+  el.querySelector('b').textContent = String(Math.ceil(left / 1000));
+  el.querySelector('span').textContent = done ? 'Circle drawn! Get ready...' : 'Draw your main circle!';
+  // Over your drawing area but out of the way of your circle: the far side of
+  // Your area on the split screen, else near the top of your half.
+  const main = board.views?.find((v) => v.name === 'main');
+  const rect = canvas.getBoundingClientRect();
+  const home = state.homes?.[side];
+  const homeX = main && home ? main.ox + home.x * main.scale : 0;
+  const at = main
+    ? { x: main.rect.x + main.rect.w * (homeX < main.rect.x + main.rect.w / 2 ? 0.78 : 0.22), y: main.rect.y + main.rect.h * 0.5 }
+    : { x: rect.width * (session.mode === 'local' ? 0.5 : side === 'right' ? 0.75 : 0.25), y: rect.height * 0.14 };
+  el.style.left = `${rect.left + at.x}px`;
+  el.style.top = `${rect.top + at.y}px`;
+}
+
+// A dashed ring at each home that still needs its main circle: the smallest
+// main circle that counts.
+function drawCircleGuides(ctx, state) {
+  if (state.winner || !(state.timeMs < (state.circleDeadlineMs ?? 0)) || !state.homes) return;
+  for (const [id, seat] of Object.entries(session.seats)) {
+    if (seat.kind !== 'human' || mainWard(state, id)) continue;
+    const home = state.homes[id];
+    ctx.save();
+    ctx.strokeStyle = `rgba(${CONFIG.render.chalkColor}, 0.35)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([8, 8]);
+    ctx.beginPath();
+    ctx.arc(home.x, home.y, CONFIG.engine.minMainRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 // --- Keys and buttons ----------------------------------------------------------

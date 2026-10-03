@@ -11,7 +11,7 @@ import { pathLength } from '../recognizer/clean.js';
 import { hitSegment, hitCircle, sectionAt } from './collide.js';
 import { buildSections } from './wards.js';
 import { bindAngles, attach } from './bind.js';
-import { emit, otherSide, damageSection, damageWall, damageChalkling } from './damage.js';
+import { emit, otherSide, damageSection, damageWall, damageChalkling, knockOut } from './damage.js';
 import { stepChalklings } from './chalklings.js';
 import { addMakingStroke, tidy } from './making.js';
 import { stepErasing } from './erase.js';
@@ -26,7 +26,9 @@ export const ORDERS = ['attack', 'guard'];
 // options.bindPoints: how many bind points each duelist's main circle has,
 // e.g. { left: 4, right: 6 }.
 // options.chalk: how much chalk each duelist starts with (CONFIG.chalk.supply).
-export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, players = 2, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost } = {}) {
+// options.circleDeadlineMs: how long everyone has to draw their main circle
+// (CONFIG.engine.circleDeadlineMs; Infinity for no deadline).
+export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, makeCfg = CONFIG.making, players = 2, bindPoints = {}, chalk = CONFIG.chalk.supply, chalkVigorCost = CONFIG.chalk.vigorCost, circleDeadlineMs = cfg.circleDeadlineMs } = {}) {
   const ids = playerIds(players);
   const { world, homes } = makeTerritories(ids, cfg);
   const each = (value) => Object.fromEntries(ids.map((id) => [id, typeof value === 'function' ? value(id) : value]));
@@ -36,7 +38,9 @@ export function createDuel({ cfg = CONFIG.engine, chalkCfg = CONFIG.chalkling, m
     makeCfg,
     players: ids, // everyone in the duel, e.g. ['left', 'right', 'p2']
     homes, // each player's home point; their territory is around it
-    out: [], // players who have been breached, in order
+    out: [], // players who are out (breached, or no circle in time), in order
+    outReasons: {}, // why each one is out: 'breach' or 'noCircle'
+    circleDeadlineMs, // draw your main circle before this (ms of duel time) or you're out
     chalkCost: { vigorCost: chalkVigorCost },
     chalk: each(chalk), // chalk each duelist has left
     chalkStart: chalk,
@@ -93,6 +97,9 @@ export function addStroke(state, owner, rawPoints, { making = false, detail = fa
   if (!onOwnSide(state, owner, points)) return reject('stay on your side');
   if (result.type === 'dud') return reject(result.reason);
   if (result.type !== 'warding' && !mainWard(state, owner)) return reject('draw your circle first');
+  if (result.type === 'warding' && !mainWard(state, owner) && result.shape.radius < cfg.minMainRadius) {
+    return reject('main circle too small: draw it bigger');
+  }
 
   if (result.type === 'forbiddance' && wallCount(state, owner) >= cfg.maxWalls) {
     return reject(`only ${cfg.maxWalls} walls at a time: erase one first`);
@@ -163,6 +170,7 @@ export function step(state) {
   const dt = cfg.stepMs / 1000;
   state.tick++;
   state.timeMs = state.tick * cfg.stepMs;
+  checkCircleDeadline(state);
 
   stepErasing(state);
   for (const v of state.vigors) moveVigor(state, v, dt);
@@ -179,6 +187,23 @@ export function step(state) {
     state.winner = 'draw';
     emit(state, { type: 'draw' });
   }
+}
+
+// When the countdown runs out, anyone without a main circle is out. If nobody
+// drew one, it's a draw.
+function checkCircleDeadline(state) {
+  if (state.winner || state.circleChecked || state.timeMs < state.circleDeadlineMs) return;
+  state.circleChecked = true;
+  const alive = alivePlayers(state);
+  const late = alive.filter((id) => !mainWard(state, id));
+  if (!late.length) return;
+  if (late.length === alive.length) {
+    state.winner = 'draw';
+    state.drawReason = 'noCircle';
+    emit(state, { type: 'draw', reason: 'noCircle' });
+    return;
+  }
+  for (const id of late) if (!state.winner) knockOut(state, id, 'noCircle');
 }
 
 function moveVigor(state, v, dt) {

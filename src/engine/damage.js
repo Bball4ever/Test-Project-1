@@ -28,10 +28,12 @@ export function damageSection(state, ward, index, amount, point) {
 
 // A breached duelist is out. When only one is left, they've won. Until then,
 // everything the breached duelist drew is wiped off the board.
-export function knockOut(state, owner) {
+// reason: 'breach', or 'noCircle' (didn't draw a main circle in time).
+export function knockOut(state, owner, reason = 'breach') {
   state.out.push(owner);
+  state.outReasons[owner] = reason;
   const alive = state.players.filter((id) => !state.out.includes(id));
-  emit(state, { type: 'out', owner, place: alive.length + 1, point: { ...state.homes[owner] } });
+  emit(state, { type: 'out', owner, reason, place: alive.length + 1, point: { ...state.homes[owner] } });
   if (alive.length === 1) {
     state.winner = alive[0];
     return;
