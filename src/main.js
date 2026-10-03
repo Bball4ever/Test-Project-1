@@ -50,7 +50,7 @@ let paused = false;
 let tryWithoutTouch = false;
 
 function makeSeat(kind, controller = null) {
-  return { kind, controller, live: null, eraser: false, making: false, detailPick: false, powers: [], waves: 0 };
+  return { kind, controller, live: null, eraser: false, making: false, detailPick: false, powers: [], control: 'remote', waves: 0 };
 }
 
 // --- Input ---------------------------------------------------------------------
@@ -95,8 +95,8 @@ const human = new HumanController(canvas, {
     // Strokes in the detail screen are always chalkling parts, and count extra.
     const detail = stroke.view?.name === 'detail';
     const making = session.seats[stroke.owner].making || detail;
-    const powers = making ? session.seats[stroke.owner].powers : [];
-    const action = { type: 'stroke', points: stroke.points, making, powers, detail };
+    const { powers, control } = session.seats[stroke.owner];
+    const action = { type: 'stroke', points: stroke.points, making, powers: making ? powers : [], detail, control };
     const { result } = act(stroke.owner, action, stroke.pointerType);
     if (result) lastStroke = { result, pointerType: stroke.pointerType, raw: stroke.points };
   },
@@ -230,7 +230,7 @@ function onNetMessage(msg) {
   } else if (msg.t === 'start' && session?.net) {
     session.cache = new Map();
     session.state = null;
-    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, detailPick: false, powers: [], waves: 0 });
+    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, detailPick: false, powers: [], control: 'remote', waves: 0 });
     beginDuel();
     showToast(`Duel on! You are on the ${session.mySide.toUpperCase()} half.`);
   } else if (msg.t === 'snap' && session?.net) {
@@ -684,6 +684,15 @@ function pickPower(side, power) {
   updateControls();
 }
 
+// How the next chalkling will be controlled: 'remote' (follows the Attack /
+// Guard buttons), or 'attack' / 'guard' (always does that, whatever the buttons say).
+function pickControl(side, control) {
+  const seat = session?.state && session.seats[side];
+  if (seat?.kind !== 'human') return;
+  seat.control = control;
+  updateControls();
+}
+
 function giveOrder(side, order) {
   if (!session?.state || session.seats[side]?.kind !== 'human') return;
   act(side, { type: 'order', order });
@@ -710,6 +719,7 @@ function updateControls() {
     for (const b of box.querySelectorAll('[data-power]')) {
       b.classList.toggle('selected', b.dataset.power ? seat.powers.includes(b.dataset.power) : !seat.powers.length);
     }
+    for (const b of box.querySelectorAll('[data-control]')) b.classList.toggle('selected', b.dataset.control === seat.control);
     const detailBtn = box.querySelector('[data-act="detail"]');
     detailBtn.hidden = !isSplit();
     detailBtn.classList.toggle('selected', seat.detailPick);
@@ -799,7 +809,7 @@ function makingHint(state, side) {
   const holding = state.wards.find((w) => w.owner === side && w.holding);
   if (holding && !holding.creature?.length) {
     const zoom = isSplit() ? ' Tip: press Detail (F) and tap the circle to draw it big in the detail screen; detail there counts extra.' : '';
-    return `${steps} 3. Pick powers above if you want them, then draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.${zoom}`;
+    return `${steps} 3. Pick powers and a command above (Remote follows Attack/Guard; Always attack/guard ignores them), then draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.${zoom}`;
   }
   const power = holding ? powerSoFar(holding) : '';
   if (holding && !state.paths.some((p) => p.holdingId === holding.id)) {
@@ -886,6 +896,7 @@ for (const box of document.querySelectorAll('.side-controls')) {
   box.querySelector('[data-act="making"]').addEventListener('click', () => toggleMaking(side));
   box.querySelector('[data-act="detail"]').addEventListener('click', () => toggleDetailPick(side));
   for (const b of box.querySelectorAll('[data-power]')) b.addEventListener('click', () => pickPower(side, b.dataset.power));
+  for (const b of box.querySelectorAll('[data-control]')) b.addEventListener('click', () => pickControl(side, b.dataset.control));
   box.querySelector('[data-act="attack"]').addEventListener('click', () => giveOrder(side, 'attack'));
   box.querySelector('[data-act="guard"]').addEventListener('click', () => giveOrder(side, 'guard'));
 }

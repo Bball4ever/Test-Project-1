@@ -139,8 +139,21 @@ function countCorners(stroke, limit) {
   return count;
 }
 
+// How a chalkling is controlled once its path is done (picked while making it):
+//   remote  follows its side's Attack / Guard buttons
+//   attack  always attacks, whatever the buttons say
+//   guard   always guards, whatever the buttons say
+export const CONTROLS = ['remote', 'attack', 'guard'];
+
+// The order a chalkling follows right now.
+export function orderFor(state, c) {
+  return c.control === 'attack' || c.control === 'guard' ? c.control : state.orders[c.owner];
+}
+
 // powers: the powers picked while making it ([] for none); pc: CONFIG.powers.
-export function makeChalkling(id, owner, strokes, measure, cc, order, powers = [], pc = null) {
+// control: 'remote' (default), 'attack' or 'guard' (see CONTROLS).
+export function makeChalkling(id, owner, strokes, measure, cc, order, powers = [], pc = null, control = 'remote') {
+  if (!CONTROLS.includes(control)) control = 'remote';
   // A role shifts strength toward one stat: an attacker's bite goes up,
   // a defender's health goes up, a runner's speed goes up.
   const boost = (share) => 1 - cc.roleBoost / 3 + cc.roleBoost * share;
@@ -161,7 +174,8 @@ export function makeChalkling(id, owner, strokes, measure, cc, order, powers = [
     bite: (cc.baseBite + cc.bitePerDetail * measure.detail) * boost(measure.shares.spiky),
     speed: (cc.baseSpeed / (1 + cc.slowPerDetail * measure.detail)) * boost(measure.shares.leggy),
     mode: 'order',
-    order,
+    control,
+    order: control === 'remote' ? order : control,
     path: null,
     pathIndex: 0,
     huntId: null,
@@ -195,7 +209,7 @@ export function command(state, c, path) {
     c.pathIndex = 0;
   } else {
     c.mode = 'order';
-    c.order = state.orders[c.owner];
+    c.order = orderFor(state, c);
   }
   emit(state, { type: 'command', owner: c.owner, id: c.id, mode: c.mode, huntId: c.huntId });
 }
@@ -254,7 +268,7 @@ function stepOne(state, c, dt) {
     while (c.pathIndex < c.path.length - 1 && pointBlocked(c.path[c.pathIndex], walls)) c.pathIndex++;
     if (c.pathIndex >= c.path.length) {
       c.mode = 'order';
-      c.order = state.orders[c.owner];
+      c.order = orderFor(state, c);
       c.path = null;
       emit(state, { type: 'pathDone', owner: c.owner, id: c.id });
       return;

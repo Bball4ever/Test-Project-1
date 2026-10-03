@@ -242,6 +242,34 @@ test('Attack / Guard only command chalklings that finished their paths', () => {
   assert.equal(onPath.order, 'attack');
 });
 
+test('Command: Remote follows the buttons; Always attack / Always guard ignore them', () => {
+  const state = duel();
+  const remote = makeChalklingBookWay(state, 'left', stickFigure(0, 0), { k: 1 });
+  const attacker = makeChalklingBookWay(state, 'left', stickFigure(0, 0), { k: 2, control: 'attack' });
+  const guard = makeChalklingBookWay(state, 'left', stickFigure(0, 0), { k: 3, control: 'guard' });
+  assert.deepEqual([remote.control, attacker.control, guard.control], ['remote', 'attack', 'guard']);
+  assert.equal(guard.order, 'guard', 'starts guarding even though the buttons say attack');
+  setOrder(state, 'left', 'guard');
+  assert.deepEqual([remote.order, attacker.order, guard.order], ['guard', 'attack', 'guard']);
+  setOrder(state, 'left', 'attack');
+  assert.deepEqual([remote.order, attacker.order, guard.order], ['attack', 'attack', 'guard']);
+});
+
+test('an Always guard chalkling guards when its path is done, whatever the buttons say', () => {
+  const state = duel();
+  const c = makeChalklingBookWay(state, 'left', stickFigure(0, 0), { k: 1, to: { x: 520, y: 640 }, control: 'guard' });
+  assert.equal(c.mode, 'path');
+  run(state, 8);
+  assert.equal(c.mode, 'order');
+  assert.equal(c.order, 'guard');
+});
+
+test('a made-up command over the network becomes Remote', () => {
+  const pts = [{ x: 1, y: 2 }];
+  assert.equal(sanitizeAction({ type: 'stroke', points: pts, control: 'guard' }).control, 'guard');
+  assert.equal(sanitizeAction({ type: 'stroke', points: pts, control: 'dance' }).control, 'remote');
+});
+
 // --- Fighting ------------------------------------------------------------------------------------
 
 test('a duel can be won with chalklings alone', () => {

@@ -332,3 +332,9 @@ body[data-split='left'] .side-controls[data-side='left'],
 body[data-split='left'] .side-controls[data-side='left'] .power-picker {
   left: calc(100vw - var(--map-w, 50vw) + 12px);
 }
+
+/* Starts a new row in the chalkling picker (the Command buttons). */
+.side-controls .power-picker .picker-break {
+  flex-basis: 100%;
+  height: 0;
+}

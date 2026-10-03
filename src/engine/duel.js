@@ -61,7 +61,8 @@ export function mainWard(state, side) {
 // making: true when the duelist has Chalkling mode on (see making.js).
 // powers: the chalkling powers picked with the buttons (making strokes only).
 // detail: true if it was drawn in the detail screen (always a making stroke).
-export function addStroke(state, owner, rawPoints, { making = false, powers = [], detail = false } = {}) {
+// control: how the chalkling will be controlled: 'remote', 'attack' or 'guard'.
+export function addStroke(state, owner, rawPoints, { making = false, powers = [], detail = false, control = 'remote' } = {}) {
   if (detail) making = true;
   if (state.winner || !rawPoints.length) return { accepted: false, result: null };
   const cfg = state.cfg;
@@ -77,7 +78,7 @@ export function addStroke(state, owner, rawPoints, { making = false, powers = []
   }
   state.chalk[owner] -= cost;
 
-  if (making) return addMakingStroke(state, owner, points, mainWard(state, owner), powers, detail);
+  if (making) return addMakingStroke(state, owner, points, mainWard(state, owner), powers, detail, control);
 
   const reject = (reason) => {
     const dud = { ...result, type: 'dud', reason, guess: result.guess ?? null };
@@ -140,7 +141,8 @@ export function addStroke(state, owner, rawPoints, { making = false, powers = []
 export function setOrder(state, owner, order) {
   if (!ORDERS.includes(order)) return;
   state.orders[owner] = order;
-  for (const c of state.chalklings) if (c.owner === owner && c.mode === 'order') c.order = order;
+  // Only "remote" chalklings follow the buttons; "always attack/guard" ones don't.
+  for (const c of state.chalklings) if (c.owner === owner && c.mode === 'order' && (c.control ?? 'remote') === 'remote') c.order = order;
   emit(state, { type: 'order', owner, order });
 }
 

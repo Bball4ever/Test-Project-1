@@ -364,7 +364,11 @@ function drawChalkMeters(ctx, state, world) {
 
 // What a chalkling is doing, in words.
 function statusText(c) {
-  if (c.mode === 'order') return c.order === 'guard' ? 'Guarding' : 'Attacking';
+  if (c.mode === 'order') {
+    const doing = c.order === 'guard' ? 'guarding' : 'attacking';
+    // "Always attacking" ignores the Attack / Guard buttons; "Attacking (remote)" follows them.
+    return c.control === 'attack' || c.control === 'guard' ? `Always ${doing}` : `${doing[0].toUpperCase()}${doing.slice(1)} (remote)`;
+  }
   return { path: 'On its path', hunt: 'Hunting', return: 'Coming home', waiting: 'Waiting for orders', held: 'Chained' }[c.mode] ?? '';
 }
 

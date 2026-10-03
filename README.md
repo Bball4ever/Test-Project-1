@@ -42,7 +42,12 @@ Press **Chalkling** (or M) first: while it's on, your strokes are chalkling part
 
 Any chalkling attacks an enemy chalkling that comes close, then carries on with what it was doing (a hunter stays on its target). Chalklings find their own way: they walk **around** walls and circles (using A* route-finding), and only chew through a wall if there's no way round. The enemy circle they're attacking is never avoided: they go straight for it.
 
-When a path ends, the chalkling follows the **Attack / Guard** buttons. After a hunt, it walks back to your side and waits (shown with a "?"). To give it a new command: in Chalkling mode, draw a line from a bind point to it (a new chain) and a new path from it, then erase the chain.
+When a path ends (or if you didn't draw one), what the chalkling does depends on the **Command** you picked while making it (the row under the Powers buttons):
+- **Remote** (the default): follows the **Attack / Guard** buttons, and changes when you press them.
+- **Always attack**: always marches on the enemy circle, whatever the buttons say.
+- **Always guard**: always guards your circle, whatever the buttons say.
+
+Its label says which: "Attacking (remote)", "Always guarding", and so on. After a hunt, it walks back to your side and waits (shown with a "?"). To give it a new command: in Chalkling mode, draw a line from a bind point to it (a new chain) and a new path from it, then erase the chain.
 
 **What it's good at depends on what you draw.**
 - **Spiky** drawings (claws, teeth, lots of loose line ends) are **attackers**: they bite harder.
@@ -116,7 +121,7 @@ The smart power choice came from testing: in bot-vs-bot duels **Bow** and **Shie
 | M | Chalkling | Turn Chalkling mode on or off (chain, circle, creature, path). |
 | F | Detail | Split screen only: tap a holding circle to draw its creature big in the detail screen. |
 | E | Eraser | Turn the eraser on, then click a line: it's gone 3 seconds later. |
-| A / G | Attack / Guard | Orders for chalklings that have finished their paths. |
+| A / G | Attack / Guard | Orders for Remote chalklings that have finished their paths. |
 | P | Pause | Freeze the duel (not online). |
 | D | Debug | Shows the numbers behind every score, section health, and chalkling stats. |
 | S | Save stroke | Copies your last stroke as JSON, to turn into a test. |
@@ -131,7 +136,7 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 110 tests covering:
+There are 113 tests covering:
 - the recognizer
 - the duel engine (damage, how spiky waves are, walls stopping waves, the wall limit, breach)
 - bind points

@@ -50,11 +50,12 @@ export function holdingFor(state, owner, points) {
 }
 
 // detail: true if it was drawn in the detail screen (it counts for more).
-export function addCreatureStroke(state, ward, points, powers = [], detail = false) {
+export function addCreatureStroke(state, ward, points, powers = [], detail = false, control = 'remote') {
   if (ward.creature.length >= state.chalkCfg.maxStrokes) return { accepted: false, result: { type: 'dud', reason: 'creature has enough strokes', quality: 0 } };
   ward.creature.push(points);
   ward.creatureDetail = [...(ward.creatureDetail ?? []), !!detail];
   ward.powers = powers; // the powers picked when the latest part was drawn
+  ward.control = control; // and how it will be controlled (remote, attack or guard)
   emit(state, { type: 'creatureStroke', owner: ward.owner, wardId: ward.id });
   return { accepted: true, result: { type: 'creature', reason: null, quality: 1, strokes: ward.creature.length } };
 }
@@ -99,7 +100,7 @@ export function addPath(state, owner, points, origin) {
 
 // A stroke drawn in Chalkling mode. Works out which step it is from what's
 // already on the board, and says what's needed next if it doesn't fit.
-export function addMakingStroke(state, owner, points, main, powers = [], detail = false) {
+export function addMakingStroke(state, owner, points, main, powers = [], detail = false, control = 'remote') {
   const reject = (reason, result = null) => {
     emit(state, { type: 'dud', owner, reason, points });
     return { accepted: false, result: { ...(result ?? {}), type: 'dud', reason, quality: result?.quality ?? 0 } };
@@ -108,7 +109,7 @@ export function addMakingStroke(state, owner, points, main, powers = [], detail 
 
   // 3. A stroke inside one of our holding circles is part of the creature.
   const holding = holdingFor(state, owner, points);
-  if (holding) return addCreatureStroke(state, holding, points, powers, detail);
+  if (holding) return addCreatureStroke(state, holding, points, powers, detail, control);
   // The detail screen is only for drawing inside a holding circle.
   if (detail) return reject('in the detail screen, draw inside the holding circle');
   // 4. A stroke leading out of a holding circle (or a chained chalkling) is its path.
@@ -218,9 +219,9 @@ export function release(state, chain) {
   }
   // The creature breaks out and the holding circle is gone.
   ward.gone = true;
-  const c = makeChalkling(state.nextId++, ward.owner, strokes, measure, cc, state.orders[ward.owner], ward.powers ?? [], state.powerCfg);
+  const c = makeChalkling(state.nextId++, ward.owner, strokes, measure, cc, state.orders[ward.owner], ward.powers ?? [], state.powerCfg, ward.control);
   state.chalklings.push(c);
-  emit(state, { type: 'placed', owner: c.owner, kind: 'chalkling', id: c.id, quality: measure.detail / cc.maxDetail, role: c.role, powers: c.powers, powerLevel: c.powerLevel, detail: c.detail });
+  emit(state, { type: 'placed', owner: c.owner, kind: 'chalkling', id: c.id, quality: measure.detail / cc.maxDetail, role: c.role, control: c.control, powers: c.powers, powerLevel: c.powerLevel, detail: c.detail });
   command(state, c, path);
 }
 
