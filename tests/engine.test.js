@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { createDuel, addStroke, step, mainWard } from '../src/engine/duel.js';
+import { createDuel, addStroke, step, mainWard, styleBonus } from '../src/engine/duel.js';
 import { hitSegment, hitCircle, reflect, sectionAt } from '../src/engine/collide.js';
 import { dummyCirclePoints } from '../src/controllers/dummy.js';
 import { CONFIG } from '../src/config.js';
+import { recognize } from '../src/recognizer/index.js';
 import * as S from './fixtures/strokes.js';
 
 // These tests aren't about the chalk limit, so give both sides endless chalk.
@@ -114,8 +115,7 @@ test('a Vigor flies to the enemy circle and damages the section it hits', () => 
   assert.equal(hit.owner, 'right');
   const ward = mainWard(state, 'right');
   assert.equal(hit.section, sectionAt(ward.center, hit.point, E.sections));
-  assert.equal(result.shape.style, 'curved');
-  assert.ok(Math.abs(hit.damage - E.vigorDamage * result.quality * E.vigorStyles.curved.circles) < 1e-9);
+  assert.ok(Math.abs(hit.damage - E.vigorDamage * result.quality * styleBonus(E, result.shape, 'circles')) < 1e-9);
   const s = ward.sections[hit.section];
   assert.ok(Math.abs(s.max - s.health - hit.damage) < 1e-9);
   // Only that one section took damage.
@@ -143,7 +143,7 @@ test("a wall stops a Vigor (no bouncing) and takes the damage", () => {
   assert.ok(blocked, 'the wall stopped it');
   assert.equal(events(state, 'hit').length, 0, 'nothing behind the wall was hit');
   assert.equal(state.vigors.length, 0, 'the Vigor is gone, not bounced');
-  assert.ok(Math.abs(wall.max - wall.health - E.vigorDamage * result.quality * E.wallDamageFromVigor * E.vigorStyles.curved.walls) < 1e-9);
+  assert.ok(Math.abs(wall.max - wall.health - E.vigorDamage * result.quality * E.wallDamageFromVigor * styleBonus(E, result.shape, 'walls')) < 1e-9);
 });
 
 test('waves can break a wall, and then get through', () => {
@@ -169,15 +169,33 @@ test('curved waves hit circles and walls harder; spiky waves hit chalklings hard
       state.chalklings.push({ id: 999, kind: 'chalkling', owner: 'right', pos: { x: 900, y: 450 }, radius: 30, hp: 500, max: 500, mode: 'waiting', strokes: [] });
     }
     const { result } = addStroke(state, 'left', S.wave({ x: 450, y: 450, length: 240, amplitude: 25, cycles: 3, zigzag }));
-    assert.equal(result.shape.style, zigzag ? 'spiky' : 'curved');
+    if (zigzag) assert.ok(result.shape.spikiness > 0.4, `zigzag spikiness ${result.shape.spikiness}`);
+    else assert.ok(result.shape.spikiness < 0.15, `smooth wave spikiness ${result.shape.spikiness}`);
     run(state, 120);
     const e = events(state, target === 'wall' ? 'blocked' : 'hit')[0];
     assert.ok(e, `hit the ${target}`);
     return e.damage / result.quality; // so a neater wave doesn't count
   };
-  assert.ok(hitWith(false, 'circle') > hitWith(true, 'circle') * 2);
-  assert.ok(hitWith(false, 'wall') > hitWith(true, 'wall') * 2);
-  assert.ok(hitWith(true, 'chalkling') > hitWith(false, 'chalkling') * 2);
+  assert.ok(hitWith(false, 'circle') > hitWith(true, 'circle') * 1.3);
+  assert.ok(hitWith(false, 'wall') > hitWith(true, 'wall') * 1.3);
+  assert.ok(hitWith(true, 'chalkling') > hitWith(false, 'chalkling') * 1.3);
+});
+
+test('spikiness is a sliding scale: the spikier the wave, the more it does to chalklings and the less to lines', () => {
+  const at = (s) => ({ spikiness: s });
+  for (const target of ['walls', 'circles']) {
+    assert.equal(styleBonus(E, at(0), target), E.vigorStyles.curved[target]);
+    assert.equal(styleBonus(E, at(1), target), E.vigorStyles.spiky[target]);
+    assert.ok(styleBonus(E, at(0.3), target) > styleBonus(E, at(0.7), target));
+  }
+  assert.ok(styleBonus(E, at(0.7), 'chalklings') > styleBonus(E, at(0.3), 'chalklings'));
+  // Real strokes: a sharper spike shape scores spikier than an even zigzag, which is spikier than a curve.
+  const spikiness = (shape) => {
+    const pts = S.wave({ x: 300, y: 300, length: 240, amplitude: 25, cycles: 3, zigzag: shape !== 'curve' });
+    if (shape === 'needles') for (const p of pts) p.y = 300 + Math.sign(p.y - 300) * 25 * (Math.abs(p.y - 300) / 25) ** 1.8;
+    return recognize(pts).shape.spikiness;
+  };
+  assert.ok(spikiness('curve') < spikiness('zigzag') && spikiness('zigzag') < spikiness('needles'));
 });
 
 test('only 8 walls at a time', () => {

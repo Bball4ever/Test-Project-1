@@ -47,7 +47,7 @@ export function classify(points, cfg) {
   }
 
   // 4. Nothing matched. Give the most helpful reason we can.
-  if (wave.looksWavy) return dud('wave needs more bumps', TYPES.VIGOR, metrics);
+  if (wave.looksWavy) return dud(`a wave needs at least ${cfg.vigor.minHumps} humps`, TYPES.VIGOR, metrics);
   if (line.isNearlyStraight) return dud('line too crooked', TYPES.FORBIDDANCE, metrics);
   return dud('not a known line', null, metrics);
 }
@@ -181,13 +181,17 @@ function measureWave(points, cfg) {
   const unevenness = cfg.widthWeight * widthSpread + cfg.heightWeight * heightSpread;
   const quality = clamp01(1 - unevenness / cfg.maxSpread);
 
+  // Spikiness, 0 (round curved bumps) to 1 (sharp spikes), from how full the
+  // bumps are. Any wave is a Line of Vigor; this only decides what it's good at.
   const fill = bumps.length ? median(bumps.map((b) => b.fill)) : 0;
+  const spikiness = clamp01((cfg.curvedFill - fill) / (cfg.curvedFill - cfg.spikyFill));
 
+  const humps = countHumps(u, v, crossings, bumps, cfg);
   const movesForward = backtrackFraction <= cfg.maxBacktrackFraction;
   const tallEnough = amplitude >= cfg.minAmplitude;
 
   return {
-    isWave: crossings.length >= cfg.minCrossings && movesForward && tallEnough,
+    isWave: humps >= cfg.minHumps && movesForward && tallEnough,
     looksWavy: crossings.length >= 1 && movesForward && tallEnough,
     quality,
     shape: {
@@ -197,10 +201,12 @@ function measureWave(points, cfg) {
       end: { x: axis.point.x + u[u.length - 1] * dir.x, y: axis.point.y + u[u.length - 1] * dir.y },
       crossings: crossings.map((i) => points[i]),
       amplitude,
-      style: fill < cfg.spikyBelow ? 'spiky' : 'curved',
+      spikiness,
     },
     metrics: {
       crossings: crossings.length,
+      humps,
+      spikiness,
       amplitude,
       widthSpread,
       heightSpread,
@@ -208,6 +214,27 @@ function measureWave(points, cfg) {
       fill,
     },
   };
+}
+
+// Humps: the bumps between crossings of the center line, plus the piece at
+// each end if it's most of a bump (not just a little hook as the chalk lands).
+function countHumps(u, v, crossings, bumps, cfg) {
+  if (!crossings.length) return 0;
+  const refWidth = bumps.length ? median(bumps.map((b) => b.width)) : null;
+  const refHeight = bumps.length ? median(bumps.map((b) => b.height)) : null;
+  const ends = [
+    [0, crossings[0]],
+    [crossings[crossings.length - 1], u.length - 1],
+  ].map(([a, b]) => {
+    let height = 0;
+    for (let i = a; i <= b; i++) height = Math.max(height, Math.abs(v[i]));
+    return { width: Math.abs(u[b] - u[a]), height };
+  });
+  // With only one crossing there's no whole bump to compare with: use the bigger end.
+  const w = refWidth ?? Math.max(...ends.map((e) => e.width));
+  const h = refHeight ?? Math.max(...ends.map((e) => e.height));
+  const whole = (e) => e.width >= cfg.endHumpWidth * w && e.height >= cfg.endHumpHeight * h;
+  return bumps.length + ends.filter(whole).length;
 }
 
 // Measure a stroke against a candidate center line.

@@ -119,7 +119,7 @@ export function addStroke(state, owner, rawPoints, { making = false, power = nul
       id,
       owner,
       quality: result.quality,
-      style: result.shape.style, // 'curved' (good against lines) or 'spiky' (good against chalklings)
+      spikiness: result.shape.spikiness, // 0 = curved (good against lines) … 1 = spiky (good against chalklings)
       power: cfg.vigorDamage * result.quality,
       pos: { ...end }, // the front tip of the wave
       vel: { x: dir.x * cfg.vigorSpeed, y: dir.y * cfg.vigorSpeed },
@@ -128,7 +128,7 @@ export function addStroke(state, owner, rawPoints, { making = false, power = nul
       points,
     });
   }
-  emit(state, { type: 'placed', owner, kind: result.type, id, quality: result.quality, style: result.shape?.style ?? null });
+  emit(state, { type: 'placed', owner, kind: result.type, id, quality: result.quality, spikiness: result.shape?.spikiness ?? null });
   return { accepted: true, result, id };
 }
 
@@ -244,7 +244,10 @@ export function wallCount(state, owner) {
   return state.walls.filter((w) => w.owner === owner && !w.gone).length;
 }
 
-// Curved waves hit lines harder; spiky waves hit chalklings harder.
-function styleBonus(cfg, v, target) {
-  return cfg.vigorStyles[v.style]?.[target] ?? 1;
+// Curved waves hit lines harder; spiky waves hit chalklings harder. In
+// between, it's a blend: the spikier, the more like a fully spiky wave.
+export function styleBonus(cfg, v, target) {
+  const s = v.spikiness ?? 0;
+  const { curved, spiky } = cfg.vigorStyles;
+  return curved[target] + (spiky[target] - curved[target]) * s;
 }

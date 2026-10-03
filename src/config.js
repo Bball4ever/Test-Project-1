@@ -45,7 +45,12 @@ export const CONFIG = {
 
     // --- Line of Vigor (wave) ---
     vigor: {
-      minCrossings: 3, // times the wave must cross its own center line
+      minHumps: 3, // a wave needs at least this many humps (bumps to either side)
+      // A part-hump at either end counts if it's at least this fraction of a
+      // whole hump's width and height. (Height is more lenient: on a short
+      // wave the center line comes out a little tilted, which shrinks the ends.)
+      endHumpWidth: 0.6,
+      endHumpHeight: 0.4,
       // Ignore wobbles smaller than this fraction of the biggest bump,
       // so jitter near the center line doesn't count as a crossing.
       crossingHysteresis: 0.2,
@@ -60,10 +65,12 @@ export const CONFIG = {
       maxSpread: 0.4,
       widthWeight: 0.5,
       heightWeight: 0.5,
-      // Curved or spiky? Each bump's "fill" is its average height ÷ its peak
-      // height: a rounded bump is about 0.64 full, a pointed zigzag about 0.5.
-      // A wave whose bumps are less full than this is spiky.
-      spikyBelow: 0.61,
+      // How spiky? Each bump's "fill" is its average height ÷ its peak height:
+      // a rounded bump is about 0.64 full, an even zigzag about 0.54, sharp
+      // narrow spikes 0.45 or less. Spikiness runs from 0 at curvedFill to 1
+      // at spikyFill.
+      curvedFill: 0.63,
+      spikyFill: 0.5,
     },
   },
 
@@ -99,7 +106,9 @@ export const CONFIG = {
     vigorDamage: 40, // × wave quality
     vigorSpeed: 520, // units per second
     // Curved waves are better against lines (walls and circles); spiky
-    // (zigzag) waves are better against chalklings. Damage × these.
+    // waves are better against chalklings. Damage × these, for a fully curved
+    // and a fully spiky wave; anything in between gets a mix (e.g. 50% spiky:
+    // ×1.0 on lines, ×1.1 on chalklings).
     vigorStyles: {
       curved: { walls: 1.4, circles: 1.4, chalklings: 0.6 },
       spiky: { walls: 0.6, circles: 0.6, chalklings: 1.6 },

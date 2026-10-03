@@ -23,7 +23,7 @@ npm start       # then open http://localhost:8000 in Chrome
 | --- | --- | --- |
 | A circle | **Warding** | Your first circle is your main circle, and you stand in it. It has 24 sections; if any one breaks, you lose. Rounder circles are stronger, and wobbly spots are weak spots. |
 | A straight line | **Forbiddance** | A wall. It stops waves (taking their damage until it breaks), and chalklings can't pass it. You can have **8 walls** at a time; erase one to draw another. |
-| A wave | **Vigor** | Your attack. It flies the way you drew it and damages the first circle, wall or chalkling it hits. Even waves hit harder. Draw it **curved** (smooth bumps) to hit circles and walls hard (×1.4, but ×0.6 on chalklings), or **spiky** (sharp zigzag points) to hit chalklings hard (×1.6, but ×0.6 on lines). The label says which one you drew. |
+| A wave (3+ humps) | **Vigor** | Your attack. Any wave with at least 3 humps, curved or spiky, is a Line of Vigor. It flies the way you drew it and damages the first circle, wall or chalkling it hits. Even waves hit harder. **How spiky** it is (0–100%) decides what it's good against: fully curved does ×1.4 to circles and walls but ×0.6 to chalklings; fully spiky (sharp, narrow points) does ×1.6 to chalklings but ×0.6 to lines; in between is a mix. The label shows how spiky yours came out. |
 | A creature in a holding circle | **Making** | A chalkling: your drawing comes alive, walks its path, and chews through lines. See below. |
 
 **Chalk limit:** each duelist has a set amount of chalk for the whole duel (30,000 to start; see the meters at the top). Every stroke uses chalk equal to its length, even if it fails, so spamming runs you dry. **Waves are half price**: a Line of Vigor uses half its length. If both sides run out and nothing is still moving, the duel is a draw.
@@ -117,9 +117,9 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 104 tests covering:
+There are 106 tests covering:
 - the recognizer
-- the duel engine (damage, curved vs spiky waves, walls stopping waves, the wall limit, breach)
+- the duel engine (damage, how spiky waves are, walls stopping waves, the wall limit, breach)
 - bind points
 - chalklings (including finding their way around lines, and fighting nearby enemies)
 - chalkling powers

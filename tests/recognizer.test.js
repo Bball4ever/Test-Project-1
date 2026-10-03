@@ -138,10 +138,20 @@ test('uneven waves score lower on average, lopsided ones are duds', () => {
   assert.equal(lopsided.reason, 'wave too uneven');
 });
 
-test('a wave with too few bumps is a dud', () => {
-  const r = recognize(S.wave({ cycles: 1.2 }));
+test('a wave with fewer than 3 humps is a dud', () => {
+  const r = recognize(S.wave({ cycles: 1.2 })); // 2 humps and a little bit
   assert.equal(r.type, DUD);
-  assert.equal(r.reason, 'wave needs more bumps');
+  assert.equal(r.reason, 'a wave needs at least 3 humps');
+});
+
+test('3 humps is enough, curved or spiky', () => {
+  for (const zigzag of [false, true]) {
+    for (const seed of [1, 2, 3]) {
+      const r = recognize(S.wave({ cycles: 1.5, length: 240, amplitude: 30, zigzag, noise: 1, seed }));
+      assert.equal(r.type, VIGOR, `${zigzag ? 'zigzag' : 'curve'} seed ${seed}: ${r.reason}`);
+      assert.equal(r.metrics.humps, 3);
+    }
+  }
 });
 
 // --- Duds ---------------------------------------------------------------------

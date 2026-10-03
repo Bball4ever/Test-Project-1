@@ -464,7 +464,7 @@ function duelHint() {
   }
   if (template) return 'Trace the faint circle first: it becomes your main circle.';
   if (!main) return `${where}Draw your main circle on the ${side} half.`;
-  return `${where}Curved waves smash lines, spiky waves smash chalklings. Straight lines make walls (8 at most). To make a chalkling, press Chalkling (M).`;
+  return `${where}Waves need 3+ humps: curved humps smash lines, spiky humps smash chalklings. Straight lines make walls (8 at most). To make a chalkling, press Chalkling (M).`;
 }
 
 // "Sword ×1.4 so far (more chalk, stronger). " for a creature still being drawn.
