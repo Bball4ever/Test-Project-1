@@ -8,15 +8,19 @@ export class HumanController {
   // element: the canvas to listen on
   // onBegin(stroke) is called when a stroke starts (optional)
   // onStroke({ owner, pointerType, points }) is called when a stroke is finished
-  // toWorld(clientX, clientY) turns a screen position into a board position
+  // viewAt(clientX, clientY) says which view of the board a stroke starting
+  //        there is drawn in, or null if strokes can't start there (the map)
+  // toWorld(view, clientX, clientY) turns a screen position into a board
+  //        position, through that view (each view can be zoomed differently)
   // owner: a side ('left'/'right'), or a function (point) => side, so that on a
   //        shared touchscreen each stroke belongs to whichever half it starts in
-  constructor(element, { owner = 'left', onBegin = () => {}, onStroke, toWorld }) {
+  constructor(element, { owner = 'left', onBegin = () => {}, onStroke, toWorld, viewAt = () => ({}) }) {
     this.element = element;
     this.owner = owner;
     this.onBegin = onBegin;
     this.onStroke = onStroke;
     this.toWorld = toWorld;
+    this.viewAt = viewAt;
     this.enabled = true;
     this.active = new Map(); // pointerId → stroke in progress
 
@@ -34,13 +38,15 @@ export class HumanController {
   down(e) {
     if (!this.enabled) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return; // left button only
+    const view = this.viewAt(e.clientX, e.clientY);
+    if (!view) return; // not a place for drawing (e.g. the map)
     e.preventDefault();
     // Keep getting this pointer's events even if it slides off the canvas.
     this.element.setPointerCapture(e.pointerId);
-    const start = this.toWorld(e.clientX, e.clientY);
+    const start = this.toWorld(view, e.clientX, e.clientY);
     const owner = typeof this.owner === 'function' ? this.owner(start) : this.owner;
     if (!owner) return;
-    const stroke = { owner, pointerType: e.pointerType, seed: Math.floor(e.timeStamp * 1000), points: [] };
+    const stroke = { owner, view, pointerType: e.pointerType, seed: Math.floor(e.timeStamp * 1000), points: [] };
     this.active.set(e.pointerId, stroke);
     this.addPoint(stroke, e);
     this.onBegin(stroke);
@@ -69,7 +75,7 @@ export class HumanController {
   }
 
   addPoint(stroke, e) {
-    const { x, y } = this.toWorld(e.clientX, e.clientY);
+    const { x, y } = this.toWorld(stroke.view, e.clientX, e.clientY);
     const p = { x, y, t: e.timeStamp };
     const last = stroke.points[stroke.points.length - 1];
     if (last && last.x === p.x && last.y === p.y) return;

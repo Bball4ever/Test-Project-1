@@ -48,11 +48,13 @@ When a path ends, the chalkling follows the **Attack / Guard** buttons. After a 
 - **Spiky** drawings (claws, teeth, lots of loose line ends) are **attackers**: they bite harder.
 - **Bulky** drawings (shells, big round closed shapes) are **defenders**: they have more health.
 - **Long, leggy** drawings are **runners**: they're faster.
-- More chalk and detail makes any of them stronger, but slower.
+- **Detail** makes any of them stronger (but slower). Detail counts the separate features you drew, not how much chalk they used: each part, closed shapes (heads, eyes, shells), sharp corners (claws, teeth) and small parts. Drawing the same creature bigger doesn't make it stronger; drawing more features does. Parts drawn in the **detail screen** count ×1.5. The chalkling's label shows its detail.
 
 ## Chalkling powers
 
-While Chalkling mode is on, a row of **Power** buttons appears at the top. Pick one before you draw the creature (the last part you draw decides, so you can change your mind until then). **The more chalk you spend on the creature, the stronger its power:** power level = creature chalk ÷ 300, from ×0.5 (a quick stick figure) to ×3 (a big detailed drawing). The hint shows the level so far while you draw, and the label above the chalkling shows it after.
+While Chalkling mode is on, a row of **Powers** buttons appears at the top. Pick one or more before you draw the creature (the last part you draw decides, so you can change your mind until then). **The more detail in the creature, the stronger its powers:** power level = detail ÷ 4, from ×0.5 to ×3 (a stick figure is about ×0.6, a detailed beetle about ×2, and the same beetle drawn in the detail screen ×3).
+
+**Combining powers splits the strength:** one power gets the whole level, two powers get half each, three get a third each, and so on. (Wings always lets a chalkling fly over walls; only its speed boost is split.) The hint shows the detail and power level so far while you draw, and the label above the chalkling shows each power's share after.
 
 | Power | What it does at level L |
 | --- | --- |
@@ -65,6 +67,17 @@ While Chalkling mode is on, a row of **Power** buttons appears at the top. Pick 
 | Whirlwind | Much faster: speed × (1 + 0.3 L) |
 
 Bots use powers too, from level 3 up (see below).
+
+## Split screen (vs. the dummy or a bot)
+
+On the start screen, **Your screen** chooses **Draw on the right** (the default), **Draw on the left**, or **One board** (the old single view).
+
+With a split screen:
+- **The map** (the other half) shows the whole battle. Drag to move around, scroll or pinch to zoom, double-click to reset. It's for watching; you don't draw on it.
+- **Your area** (top of your drawing half) is where you draw: your circle and everything attached to it. Before your circle exists it shows your whole half of the board; after, it frames your circle and its attachments.
+- **The detail screen** (bottom of your drawing half): press **Detail** (or F), then tap a holding circle in Your area. That circle appears zoomed in, and what you draw there lands inside the real holding circle at its real (small) size. Parts drawn there count ×1.5 detail.
+
+Same-screen play keeps one board, since two players can't each have their own split. This layout is the start of the online version, where the map could hold 2 to 10 players.
 
 ## Erasing
 
@@ -90,7 +103,7 @@ Press **Eraser** (or E), then click one of your own lines. The eraser turns itse
 | 9 | Master | Stops in the middle of a chalkling to block a wave, then carries on; bigger chalklings (stronger powers) |
 | 10 | Grand master | Also attacks while waiting for a chain to erase; biggest chalklings |
 
-Bots throw curved waves at your circle and spiky ones at your chalklings, and keep to the 8-wall limit.
+Bots throw curved waves at your circle and spiky ones at your chalklings, and keep to the 8-wall limit. From Tutor (level 7) up, bots draw their chalklings in the detail screen, so their chalklings have more detail.
 
 The smart power choice came from testing: in bot-vs-bot duels **Bow** and **Shield** won far more often than the others, and **Wings** and **Whirlwind** actually lost more than having no power. Each level beats the one below it in at least 7 of 12 test duels. All the settings are in `src/config.js` under `bot.levels`.
 - **Same screen:** two people on one touchscreen, each drawing on their own half at the same time.
@@ -101,6 +114,7 @@ The smart power choice came from testing: in bot-vs-bot duels **Bow** and **Shie
 | Key | Button | Does |
 | --- | --- | --- |
 | M | Chalkling | Turn Chalkling mode on or off (chain, circle, creature, path). |
+| F | Detail | Split screen only: tap a holding circle to draw its creature big in the detail screen. |
 | E | Eraser | Turn the eraser on, then click a line: it's gone 3 seconds later. |
 | A / G | Attack / Guard | Orders for chalklings that have finished their paths. |
 | P | Pause | Freeze the duel (not online). |
@@ -117,12 +131,12 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 106 tests covering:
+There are 110 tests covering:
 - the recognizer
 - the duel engine (damage, how spiky waves are, walls stopping waves, the wall limit, breach)
 - bind points
 - chalklings (including finding their way around lines, and fighting nearby enemies)
-- chalkling powers
+- chalkling powers (including detail grading, the detail screen bonus and split powers)
 - the chalk limit
 - the bots (including all ten levels ranking in order)
 - online play (two real connections, checking both see the same duel)

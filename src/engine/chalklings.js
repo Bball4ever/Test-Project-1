@@ -19,14 +19,17 @@ import { pathLength, distance, resample } from '../recognizer/clean.js';
 import { closestOnSegment, sectionAt } from './collide.js';
 import { damageSection, damageWall, damageChalkling, emit, otherSide } from './damage.js';
 import { obstaclesFor, findRoute, pointBlocked } from './route.js';
-import { powerLevel, applyPowerStats, biteOf, usePower, flies } from './powers.js';
+import { powerLevel, cleanPowers, applyPowerStats, biteOf, usePower, flies } from './powers.js';
 
 const REPLAN_TICKS = 30; // look for a fresh route twice a second
 
 // --- Measuring a drawing ---------------------------------------------------------
 
-export function measureCreature(strokes, cc) {
+// detailFlags[i] is true if stroke i was drawn in the detail screen.
+export function measureCreature(strokes, cc, detailFlags = []) {
   let ink = 0;
+  let detail = 0;
+  let detailStrokes = 0;
   let closed = 0;
   let area = 0;
   let looseEnds = 0;
@@ -40,26 +43,40 @@ export function measureCreature(strokes, cc) {
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
 
-  for (const stroke of strokes) {
+  const w = Math.max(1, maxX - minX);
+  const h = Math.max(1, maxY - minY);
+  const size = Math.max(w, h);
+
+  strokes.forEach((stroke, i) => {
     const len = pathLength(stroke);
     ink += len;
+    // Detail counts the separate features drawn, not how much chalk they used:
+    // every part, closed shapes (eyes, shells), sharp corners (claws, teeth)
+    // and small parts. Parts drawn in the detail screen count extra.
+    let features = cc.detailPerStroke;
     const isClosed = stroke.length > 3 && len >= cc.minClosedInk && distance(stroke[0], stroke[stroke.length - 1]) / len < cc.closedGapRatio;
     if (isClosed) {
       closed++;
       area += polygonArea(stroke);
+      features += cc.detailPerClosedShape;
     } else {
       looseEnds += 2;
-      corners += countCorners(stroke, cc.cornerAngle);
+      const bends = countCorners(stroke, cc.cornerAngle);
+      corners += bends;
+      features += bends * cc.detailPerCorner;
       if (len < cc.shortStroke) shortStrokes++;
     }
-  }
-
-  const detail = Math.min(
-    cc.maxDetail,
-    ink * cc.detailPerInk + strokes.length * cc.detailPerStroke + closed * cc.detailPerClosedShape,
-  );
-  const w = Math.max(1, maxX - minX);
-  const h = Math.max(1, maxY - minY);
+    const sx = stroke.map((p) => p.x);
+    const sy = stroke.map((p) => p.y);
+    const extent = Math.max(Math.max(...sx) - Math.min(...sx), Math.max(...sy) - Math.min(...sy));
+    if (extent < cc.smallPart * size) features += cc.detailPerSmallPart;
+    if (detailFlags[i]) {
+      features *= cc.detailScreenBonus;
+      detailStrokes++;
+    }
+    detail += features;
+  });
+  detail = Math.min(cc.maxDetail, detail);
   const stretch = Math.max(w, h) / Math.min(w, h);
   const traits = {
     spiky: looseEnds * cc.spikePerLooseEnd + corners * cc.spikePerCorner,
@@ -77,7 +94,8 @@ export function measureCreature(strokes, cc) {
     closed,
     strokes: strokes.length,
     detail,
-    size: Math.max(w, h),
+    detailStrokes,
+    size,
     center: { x: (minX + maxX) / 2, y: (minY + maxY) / 2 },
     looseEnds,
     corners,
@@ -121,8 +139,8 @@ function countCorners(stroke, limit) {
   return count;
 }
 
-// power: the power picked while making it (or null); pc: CONFIG.powers.
-export function makeChalkling(id, owner, strokes, measure, cc, order, power = null, pc = null) {
+// powers: the powers picked while making it ([] for none); pc: CONFIG.powers.
+export function makeChalkling(id, owner, strokes, measure, cc, order, powers = [], pc = null) {
   // A role shifts strength toward one stat: an attacker's bite goes up,
   // a defender's health goes up, a runner's speed goes up.
   const boost = (share) => 1 - cc.roleBoost / 3 + cc.roleBoost * share;
@@ -136,6 +154,7 @@ export function makeChalkling(id, owner, strokes, measure, cc, order, power = nu
     pos: { ...measure.center },
     radius: Math.max(cc.minRadius, Math.min(cc.maxRadius, measure.size * 0.4)),
     detail: measure.detail,
+    detailStrokes: measure.detailStrokes, // parts drawn in the detail screen
     role: measure.role,
     hp: health,
     max: health,
@@ -149,10 +168,13 @@ export function makeChalkling(id, owner, strokes, measure, cc, order, power = nu
     chainId: null,
     action: 'idle', // walk | chew | fight | idle (for the renderer's animation)
     facing: owner === 'left' ? 1 : -1,
-    power: power && pc ? power : null,
-    powerLevel: power && pc ? powerLevel(measure.ink, pc) : 0,
+    powers: pc ? cleanPowers(powers) : [],
+    powerLevel: 0, // the total; each power gets an equal share of it
   };
-  if (c.power) applyPowerStats(c, pc);
+  if (c.powers.length) {
+    c.powerLevel = powerLevel(measure.detail, pc);
+    applyPowerStats(c, pc);
+  }
   return c;
 }
 
@@ -184,7 +206,7 @@ export function stepChalklings(state, dt) {
   for (const c of state.chalklings) {
     if (c.gone || state.winner) continue;
     stepOne(state, c, dt);
-    if (c.power) usePower(state, c, dt);
+    if (c.powers?.length) usePower(state, c, dt);
   }
 }
 

@@ -3,8 +3,7 @@ import assert from 'node:assert/strict';
 
 import { createDuel, addStroke, step } from '../src/engine/duel.js';
 import { applyAction, sanitizeAction } from '../src/engine/actions.js';
-import { measureCreature } from '../src/engine/chalklings.js';
-import { powerLevel } from '../src/engine/powers.js';
+import { powerLevel, levelOf } from '../src/engine/powers.js';
 import { damageChalkling } from '../src/engine/damage.js';
 import { stickFigure, beetle, urchin, turtle } from '../src/data/creatures.js';
 import { CONFIG } from '../src/config.js';
@@ -32,19 +31,57 @@ function parked(state, side, creature, power, at, r = 55) {
   return c;
 }
 
-test('the picked power goes with the chalkling, and more chalk makes it stronger', () => {
+test('the picked power goes with the chalkling, and more detail makes it stronger', () => {
   const state = duel();
-  const small = makeChalklingBookWay(state, 'left', stickFigure(0, 0), { power: 'sword', r: 40 });
-  const big = makeChalklingBookWay(state, 'left', beetle(0, 0), { power: 'sword', r: 90, k: 2 });
-  assert.equal(small.power, 'sword');
-  assert.equal(big.power, 'sword');
-  assert.ok(big.powerLevel > small.powerLevel * 2, `${big.powerLevel} vs ${small.powerLevel}`);
-  assert.equal(big.powerLevel, powerLevel(measureCreature(big.strokes, CONFIG.chalkling).ink, P));
+  const plain = makeChalklingBookWay(state, 'left', stickFigure(0, 0), { power: 'sword' });
+  const detailed = makeChalklingBookWay(state, 'left', beetle(0, 0), { power: 'sword', k: 2 });
+  assert.deepEqual(plain.powers, ['sword']);
+  assert.deepEqual(detailed.powers, ['sword']);
+  assert.ok(detailed.powerLevel > plain.powerLevel * 2, `${detailed.powerLevel} vs ${plain.powerLevel}`);
+  assert.equal(detailed.powerLevel, powerLevel(detailed.detail, P));
 });
 
-test('power level follows the chalk, within its limits', () => {
-  assert.equal(powerLevel(P.chalkPerLevel, P), 1);
-  assert.equal(powerLevel(P.chalkPerLevel * 2, P), 2);
+test('drawing in the detail screen makes the same creature stronger', () => {
+  const normal = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { power: 'sword' });
+  const zoomed = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { power: 'sword', detail: true });
+  assert.equal(zoomed.detailStrokes, zoomed.strokes.length);
+  assert.equal(normal.detailStrokes, 0);
+  assert.ok(Math.abs(zoomed.detail - normal.detail * CONFIG.chalkling.detailScreenBonus) < 1e-9);
+  assert.ok(zoomed.powerLevel > normal.powerLevel);
+  assert.ok(zoomed.max > normal.max && zoomed.bite > normal.bite, 'and the chalkling itself is stronger');
+});
+
+test("detail is about features, not chalk: the same drawing bigger isn't stronger", () => {
+  const small = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { r: 40 });
+  const big = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { r: 90 });
+  assert.ok(Math.abs(small.detail - big.detail) < 1e-9, `${small.detail} vs ${big.detail}`);
+});
+
+test('two powers work at half strength each, three at a third', () => {
+  const one = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { powers: ['sword'] });
+  const two = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { powers: ['sword', 'whirlwind'] });
+  const three = makeChalklingBookWay(duel(), 'left', urchin(0, 0), { powers: ['sword', 'whirlwind', 'shield'] });
+  const base = makeChalklingBookWay(duel(), 'left', urchin(0, 0));
+  const L = one.powerLevel;
+  assert.equal(two.powerLevel, L);
+  assert.deepEqual(levelOf(two, 'sword'), L / 2);
+  assert.deepEqual(levelOf(three, 'shield'), L / 3);
+  assert.ok(Math.abs(one.bite - base.bite * (1 + P.swordBite * L)) < 1e-9);
+  assert.ok(Math.abs(two.bite - base.bite * (1 + (P.swordBite * L) / 2)) < 1e-9);
+  assert.ok(Math.abs(two.speed - base.speed * (1 + (P.whirlwindSpeed * L) / 2)) < 1e-9);
+  assert.ok(Math.abs(three.bite - base.bite * (1 + (P.swordBite * L) / 3)) < 1e-9);
+});
+
+test('the detail screen only takes strokes inside a holding circle', () => {
+  const state = duel();
+  const r = addStroke(state, 'left', S.line({ x1: 450, y1: 300, x2: 450, y2: 400 }), { detail: true });
+  assert.equal(r.accepted, false);
+  assert.match(r.result.reason, /detail screen/);
+});
+
+test('power level follows the detail, within its limits', () => {
+  assert.equal(powerLevel(P.detailPerLevel, P), 1);
+  assert.equal(powerLevel(P.detailPerLevel * 2, P), 2);
   assert.equal(powerLevel(1, P), P.minLevel);
   assert.equal(powerLevel(1e6, P), P.maxLevel);
 });
@@ -52,7 +89,7 @@ test('power level follows the chalk, within its limits', () => {
 test('no power picked means no power', () => {
   const state = duel();
   const c = makeChalklingBookWay(state, 'left', beetle(0, 0));
-  assert.equal(c.power, null);
+  assert.deepEqual(c.powers, []);
 });
 
 test('sword bites harder; whirlwind and wings are faster', () => {
@@ -120,8 +157,9 @@ test('wings fly over walls', () => {
 
 test('the power comes over the network only if it is a real one', () => {
   const pts = [{ x: 1, y: 2 }];
-  assert.equal(sanitizeAction({ type: 'stroke', points: pts, making: true, power: 'bow' }).power, 'bow');
-  assert.equal(sanitizeAction({ type: 'stroke', points: pts, making: true, power: 'laser' }).power, null);
+  assert.deepEqual(sanitizeAction({ type: 'stroke', points: pts, making: true, powers: ['bow', 'shield'] }).powers, ['bow', 'shield']);
+  assert.deepEqual(sanitizeAction({ type: 'stroke', points: pts, making: true, powers: ['laser', 'bow', 'bow'] }).powers, ['bow']);
+  assert.equal(sanitizeAction({ type: 'stroke', points: pts, detail: 'yes' }).detail, false);
   const state = duel();
   assert.equal(applyAction(state, 'left', { type: 'stroke', points: pts, power: 'nope' }).accepted, false);
 });

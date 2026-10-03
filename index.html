@@ -22,7 +22,7 @@
 
     <div class="side-controls" data-side="left" hidden>
       <div class="power-picker" hidden>
-        <span>Power:</span>
+        <span>Powers (pick one or more):</span>
         <button data-power="">None</button>
         <button data-power="sword" title="Bites harder">Sword</button>
         <button data-power="bow" title="Shoots arrows at enemy chalklings">Bow</button>
@@ -33,6 +33,7 @@
         <button data-power="whirlwind" title="Much faster">Whirlwind</button>
       </div>
       <button data-act="making" title="Draw a chalkling: chain, circle, creature, path">Chalkling <kbd>M</kbd></button>
+      <button data-act="detail" title="Tap a holding circle to draw its chalkling big in the detail screen" hidden>Detail <kbd>F</kbd></button>
       <button data-act="eraser" title="Click one of your lines: it disappears 3 seconds later">Eraser <kbd>E</kbd></button>
       <span class="orders">
         <button data-act="attack" title="Chalklings that finished their path march on the enemy circle">Attack <kbd>A</kbd></button>
@@ -41,7 +42,7 @@
     </div>
     <div class="side-controls" data-side="right" hidden>
       <div class="power-picker" hidden>
-        <span>Power:</span>
+        <span>Powers (pick one or more):</span>
         <button data-power="">None</button>
         <button data-power="sword" title="Bites harder">Sword</button>
         <button data-power="bow" title="Shoots arrows at enemy chalklings">Bow</button>
@@ -52,6 +53,7 @@
         <button data-power="whirlwind" title="Much faster">Whirlwind</button>
       </div>
       <button data-act="making" title="Draw a chalkling: chain, circle, creature, path">Chalkling</button>
+      <button data-act="detail" title="Tap a holding circle to draw its chalkling big in the detail screen" hidden>Detail</button>
       <button data-act="eraser" title="Click one of your lines: it disappears 3 seconds later">Eraser</button>
       <span class="orders">
         <button data-act="attack" title="Chalklings march on the enemy circle">Attack</button>
@@ -66,7 +68,7 @@
           Draw a <b>circle</b> first: it's your Line of Warding, and you stand inside it. Breach the other circle
           with <b>waves</b> (Lines of Vigor, at least 3 humps): the more <b>curved</b> the humps, the harder it hits circles and walls; the more <b>spiky</b>, the harder it hits chalklings. <b>Straight lines</b> (Lines of Forbiddance) are walls, up to 8 at a time. To make a
           <b>chalkling</b>, press <b>Chalkling</b>, then draw a chain from a green bind point, a circle on its end, your
-          creature inside the circle, and a path out of it. Turn Chalkling off, press <b>Eraser</b> and click the chain: 3
+          creature inside the circle (more <b>detail</b> = a stronger chalkling and stronger powers), and a path out of it. Turn Chalkling off, press <b>Eraser</b> and click the chain: 3
           seconds later it's gone and the chalkling comes alive.
         </p>
         <div class="choice wrap">
@@ -84,6 +86,16 @@
           <button class="pick selected" data-group="dummy" data-value="neat">Neat</button>
           <button class="pick" data-group="dummy" data-value="sloppy">Sloppy</button>
         </div>
+        <div class="choice wrap" data-show="dummy bot">
+          <span>Your screen:</span>
+          <button class="pick selected" data-group="screen" data-value="right">Draw on the right</button>
+          <button class="pick" data-group="screen" data-value="left">Draw on the left</button>
+          <button class="pick" data-group="screen" data-value="classic">One board</button>
+        </div>
+        <p class="note" data-show="dummy bot">
+          Split screen: one half is the map (drag, scroll or pinch to look around); the other half is your drawing
+          area on top and the <b>detail screen</b> below, for drawing chalklings big.
+        </p>
         <div class="choice">
           <span>Bind points:</span>
           <button class="pick" data-group="bind" data-value="2">2</button>

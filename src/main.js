@@ -16,11 +16,11 @@ import { createDuel, step, mainWard, SIDES } from './engine/duel.js';
 import { applyAction } from './engine/actions.js';
 import { erasableAt } from './engine/erase.js';
 import { POWER_NAMES, powerLevel } from './engine/powers.js';
-import { pathLength } from './recognizer/clean.js';
+import { measureCreature } from './engine/chalklings.js';
 import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
 import { BotController } from './controllers/bot.js';
-import { Board } from './render/board.js';
+import { Board, makeView } from './render/board.js';
 import { DuelRenderer } from './render/duel.js';
 import { drawDuelDebug, debugPanelText } from './render/debug.js';
 import { DEFENSES, findDefense, layoutDefense, tracedParts } from './data/defenses.js';
@@ -34,7 +34,8 @@ const renderer = new DuelRenderer(board);
 const hasTouch = navigator.maxTouchPoints > 0;
 
 // Choices from the start screen.
-const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bind: '4', template: '' };
+// screen: 'right' or 'left' = split screen, drawing on that side; 'classic' = one board.
+const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bind: '4', template: '', screen: 'right' };
 // Where the practice template sits until you draw your own main circle.
 const TEMPLATE_HOME = { center: { x: 380, y: 450 }, radius: 140 };
 
@@ -49,13 +50,20 @@ let paused = false;
 let tryWithoutTouch = false;
 
 function makeSeat(kind, controller = null) {
-  return { kind, controller, live: null, eraser: false, making: false, power: null, waves: 0 };
+  return { kind, controller, live: null, eraser: false, making: false, detailPick: false, powers: [], waves: 0 };
 }
 
 // --- Input ---------------------------------------------------------------------
 
 const human = new HumanController(canvas, {
-  toWorld: (x, y) => board.toWorld(x, y),
+  // Strokes are drawn in the main or detail drawing screen (or, on one board,
+  // anywhere). The map is only for watching.
+  viewAt(x, y) {
+    if (!board.views) return board.fullView();
+    const view = board.viewAt(x, y);
+    return view && !view.empty && view.name !== 'map' ? view : null;
+  },
+  toWorld: (view, x, y) => board.viewToWorld(view, x, y),
   // Which side does a new stroke belong to? The human's side, or on a shared
   // screen, whichever half the stroke starts in.
   owner(point) {
@@ -68,6 +76,7 @@ const human = new HumanController(canvas, {
   // instead of drawing, and the eraser turns itself off.
   onBegin(stroke) {
     const seat = session.seats[stroke.owner];
+    if (seat.detailPick) return pickDetailCircle(stroke, seat);
     if (!seat.eraser) return;
     stroke.erasing = true; // this press is the eraser, not a stroke
     const at = stroke.points[0];
@@ -83,8 +92,11 @@ const human = new HumanController(canvas, {
     if (!session?.state || stroke.erasing) return;
     if (session.state.winner) return;
     if (session.net) session.net.send({ t: 'live', points: null });
-    const { making, power } = session.seats[stroke.owner];
-    const action = { type: 'stroke', points: stroke.points, making, power: making ? power : null };
+    // Strokes in the detail screen are always chalkling parts, and count extra.
+    const detail = stroke.view?.name === 'detail';
+    const making = session.seats[stroke.owner].making || detail;
+    const powers = making ? session.seats[stroke.owner].powers : [];
+    const action = { type: 'stroke', points: stroke.points, making, powers, detail };
     const { result } = act(stroke.owner, action, stroke.pointerType);
     if (result) lastStroke = { result, pointerType: stroke.pointerType, raw: stroke.points };
   },
@@ -109,6 +121,8 @@ function startLocalDuel() {
   const local = choices.mode === 'local';
   session = {
     mode: choices.mode,
+    // The split screen is for one player (same-screen play keeps one board).
+    screen: local ? 'classic' : choices.screen,
     state: createDuel({ bindPoints: { left: bind, right: local ? bind : CONFIG.engine.defaultBindPoints } }),
     seats: { left: makeSeat('human'), right: local ? makeSeat('human') : opponentSeat() },
   };
@@ -117,6 +131,7 @@ function startLocalDuel() {
 
 function beginDuel() {
   setPaused(false);
+  resetSplit();
   renderer.reset();
   human.cancelAll();
   endShown = false;
@@ -215,7 +230,7 @@ function onNetMessage(msg) {
   } else if (msg.t === 'start' && session?.net) {
     session.cache = new Map();
     session.state = null;
-    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, power: null, waves: 0 });
+    for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, detailPick: false, powers: [], waves: 0 });
     beginDuel();
     showToast(`Duel on! You are on the ${session.mySide.toUpperCase()} half.`);
   } else if (msg.t === 'snap' && session?.net) {
@@ -293,19 +308,36 @@ function frame(now) {
     if (state.winner && !endShown && now - breachAt > 1400) showEnd();
   }
 
+  layoutViews();
   board.beginFrame();
+  const views = board.views ?? [board.fullView()];
   if (session?.state) {
     const { seats } = session;
     const state = session.net ? predicted(session.state, now - session.snapAt) : session.state;
-    // Strokes drawn in Chalkling mode are shown in the Making colour.
+    // Strokes drawn in Chalkling mode (or in the detail screen) are shown in the Making colour.
     const live = human
       .liveStrokes()
       .filter((s) => !s.erasing)
-      .map((s) => ({ ...s, making: seats[s.owner].making }));
+      .map((s) => ({ ...s, making: seats[s.owner].making || s.view?.name === 'detail' }));
     for (const side of SIDES) if (seats[side].live?.points) live.push(seats[side].live);
-    renderer.draw(state, live, now, practiceTemplate());
-    if (debug) drawDuelDebug(board.ctx, state);
+    const template = practiceTemplate();
+    const target = detailWard();
+    for (const view of views) {
+      if (view.empty) continue;
+      board.beginView(view);
+      // The chalk meters are shown once: on the map (or the one board).
+      renderer.draw(state, live, now, template, { meters: view.name === 'map' || view.name === 'full' });
+      if (target && view.name !== 'detail') markDetailCircle(board.ctx, target);
+      if (debug) drawDuelDebug(board.ctx, state);
+      board.endView();
+    }
+  } else {
+    for (const view of views) {
+      board.beginView(view);
+      board.endView();
+    }
   }
+  if (board.views) drawPanelFrames(board.ctx, board.views, board.dpr);
   updateHud();
   requestAnimationFrame(frame);
 }
@@ -348,6 +380,229 @@ function updatePauseButton() {
   $('btn-pause').hidden = !canPause();
 }
 
+// --- Split screen ----------------------------------------------------------------
+// Against the dummy or a bot you can split the screen: one half is the MAP (the
+// whole battle; drag to move around, scroll or pinch to zoom, double-click to
+// reset), the other half is for drawing: your MAIN drawing screen on top (your
+// own area: your circle and everything attached to it) and the DETAIL drawing
+// screen below (press Detail, tap a holding circle, and draw the creature big;
+// the detail drawn there counts extra).
+
+const camera = { zoom: 1, focus: null }; // the map's zoom and the world point at its middle
+let detailTarget = null; // id of the holding circle shown in the detail screen
+let shownDetail = null; // the one shown last frame (to notice when it changes)
+const mapPointers = new Map(); // fingers / mouse dragging the map
+
+function isSplit() {
+  return !!session?.state && (session.screen === 'left' || session.screen === 'right');
+}
+
+function resetSplit() {
+  camera.zoom = 1;
+  camera.focus = null;
+  detailTarget = null;
+  mapPointers.clear();
+}
+
+// The holding circle in the detail screen, while it's still a holding circle.
+function detailWard() {
+  if (detailTarget === null || !session?.state) return null;
+  const ward = session.state.wards.find((w) => w.id === detailTarget && !w.gone && w.holding);
+  if (!ward) detailTarget = null;
+  return ward ?? null;
+}
+
+// Work out the three panels for this frame (or one board).
+function layoutViews() {
+  const split = isSplit();
+  document.body.dataset.split = split ? session.screen : '';
+  if (!split) {
+    delete document.body.dataset.split;
+    board.views = null;
+    return;
+  }
+  const W = canvas.clientWidth;
+  const H = canvas.clientHeight;
+  const half = W / 2;
+  const drawX = session.screen === 'right' ? half : 0;
+  const mapX = session.screen === 'right' ? 0 : half;
+  const { width, height } = board.world;
+  const map = makeView('map', { x: mapX, y: 0, w: half, h: H }, { x: 0, y: 0, w: width, h: height }, { zoom: camera.zoom, focus: camera.focus, pad: 8 });
+  const mainH = Math.round(H * 0.58);
+  const main = makeView('main', { x: drawX, y: 0, w: half, h: mainH }, myArea(), { pad: 6 });
+  const ward = detailWard();
+  if ((ward?.id ?? null) !== shownDetail) {
+    shownDetail = ward?.id ?? null;
+    updateControls(); // the power buttons show while a creature can be drawn
+  }
+  const detailRect = { x: drawX, y: mainH, w: half, h: H - mainH };
+  const r = ward ? ward.radius * 1.15 : 0;
+  const detail = ward
+    ? makeView('detail', detailRect, { x: ward.center.x - r, y: ward.center.y - r, w: 2 * r, h: 2 * r }, { pad: 10 })
+    : { name: 'detail', rect: detailRect, empty: true };
+  board.views = [map, main, detail];
+}
+
+// Your area of the map, for the main drawing screen: your half of the board
+// until you've drawn your circle, then your circle and everything attached to
+// it, with room around it (below it for chains and holding circles).
+function myArea() {
+  const { width, height } = board.world;
+  const me = keyboardSide();
+  const half = { x0: me === 'left' ? 0 : width / 2, x1: me === 'left' ? width / 2 : width };
+  const main = mainWard(session.state, me);
+  if (!main) return { x: half.x0, y: 0, w: half.x1 - half.x0, h: height };
+  const { x, y } = main.center;
+  const R = main.radius;
+  const box = { x0: x - R - 140, x1: x + R + 140, y0: y - R - 100, y1: y + R + 230 };
+  const grow = (p, pad = 70) => {
+    box.x0 = Math.min(box.x0, p.x - pad);
+    box.x1 = Math.max(box.x1, p.x + pad);
+    box.y0 = Math.min(box.y0, p.y - pad);
+    box.y1 = Math.max(box.y1, p.y + pad);
+  };
+  const s = session.state;
+  for (const w of s.wards) if (w.owner === me && !w.gone && !w.main) grow(w.center, w.radius + 60);
+  for (const w of [...s.walls, ...s.chains]) if (w.owner === me && !w.gone) [w.from, w.to].forEach((p) => grow(p));
+  const x0 = Math.max(half.x0, box.x0);
+  const x1 = Math.min(half.x1, box.x1);
+  const y0 = Math.max(0, box.y0);
+  const y1 = Math.min(height, box.y1);
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+}
+
+// Detail mode: the next tap picks which holding circle goes in the detail screen.
+function toggleDetailPick(side) {
+  const seat = session?.state && session.seats[side];
+  if (seat?.kind !== 'human' || !isSplit()) return;
+  seat.detailPick = !seat.detailPick;
+  if (seat.detailPick) seat.eraser = false;
+  updateControls();
+}
+
+function pickDetailCircle(stroke, seat) {
+  stroke.erasing = true; // this tap picks a circle; it isn't a stroke
+  const at = stroke.points[0];
+  const ward = session.state.wards.find(
+    (w) => w.owner === stroke.owner && w.holding && !w.gone && Math.hypot(at.x - w.center.x, at.y - w.center.y) < w.radius,
+  );
+  if (!ward) {
+    showToast('Tap inside one of your holding circles (the circle on the end of a chain).');
+    return;
+  }
+  detailTarget = ward.id;
+  seat.detailPick = false;
+  updateControls();
+  showToast('Now draw your chalkling in the detail screen. Detail drawn there counts extra.');
+}
+
+// A dashed ring around the circle that's in the detail screen.
+function markDetailCircle(ctx, ward) {
+  ctx.save();
+  ctx.strokeStyle = `rgba(${CONFIG.render.makingColor}, 0.8)`;
+  ctx.lineWidth = 2;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.arc(ward.center.x, ward.center.y, ward.radius + 10, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Borders and names for the three panels, drawn over everything.
+function drawPanelFrames(ctx, views, dpr) {
+  ctx.save();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const captions = { map: 'MAP · drag to move · scroll or pinch to zoom · double-click to reset', main: 'YOUR AREA', detail: 'DETAIL' };
+  for (const v of views) {
+    const { x, y, w, h } = v.rect;
+    if (v.empty) {
+      ctx.fillStyle = 'rgba(8, 12, 10, 0.9)';
+      ctx.fillRect(x, y, w, h);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = '14px system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(235, 238, 228, 0.7)';
+      ctx.fillText('Detail screen: press Detail (F), then tap a holding circle', x + w / 2, y + h / 2 - 10);
+      ctx.fillText('in Your Area to draw its chalkling big here.', x + w / 2, y + h / 2 + 12);
+    }
+    ctx.strokeStyle = 'rgba(235, 238, 228, 0.35)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x + 1, y + 1, w - 2, h - 2);
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillStyle = 'rgba(235, 238, 228, 0.55)';
+    ctx.textBaseline = 'top';
+    ctx.textAlign = v.name === 'map' ? 'right' : 'left';
+    ctx.fillText(captions[v.name], v.name === 'map' ? x + w - 10 : x + 10, y + 8);
+  }
+  ctx.restore();
+}
+
+// Moving and zooming the map: drag with one finger or the mouse, pinch with
+// two fingers, or use the mouse wheel.
+function mapView() {
+  return board.views?.find((v) => v.name === 'map') ?? null;
+}
+
+function zoomMap(factor, clientX, clientY) {
+  const view = mapView();
+  if (!view) return;
+  const at = board.viewToWorld(view, clientX, clientY);
+  const zoom = Math.max(1, Math.min(6, camera.zoom * factor));
+  const focus = camera.focus ?? { x: board.world.width / 2, y: board.world.height / 2 };
+  const k = camera.zoom / zoom; // keep the point under the cursor where it is
+  camera.zoom = zoom;
+  camera.focus = clampFocus({ x: at.x - (at.x - focus.x) * k, y: at.y - (at.y - focus.y) * k });
+}
+
+function clampFocus(f) {
+  return { x: Math.max(0, Math.min(board.world.width, f.x)), y: Math.max(0, Math.min(board.world.height, f.y)) };
+}
+
+function resetCamera() {
+  camera.zoom = 1;
+  camera.focus = null;
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  const view = board.views && board.viewAt(e.clientX, e.clientY);
+  if (view?.name === 'map') {
+    mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    canvas.setPointerCapture(e.pointerId);
+  } else if (view?.empty) {
+    showToast('Press Detail (F), then tap a holding circle in Your Area.');
+  }
+});
+canvas.addEventListener('pointermove', (e) => {
+  const last = mapPointers.get(e.pointerId);
+  const view = mapView();
+  if (!last || !view) return;
+  const now = { x: e.clientX, y: e.clientY };
+  if (mapPointers.size === 1) {
+    const focus = camera.focus ?? { x: board.world.width / 2, y: board.world.height / 2 };
+    camera.focus = clampFocus({ x: focus.x - (now.x - last.x) / view.scale, y: focus.y - (now.y - last.y) / view.scale });
+  } else if (mapPointers.size === 2) {
+    const other = [...mapPointers].find(([id]) => id !== e.pointerId)[1];
+    const before = Math.hypot(last.x - other.x, last.y - other.y);
+    const after = Math.hypot(now.x - other.x, now.y - other.y);
+    if (before > 10) zoomMap(after / before, (now.x + other.x) / 2, (now.y + other.y) / 2);
+  }
+  mapPointers.set(e.pointerId, now);
+});
+for (const type of ['pointerup', 'pointercancel']) canvas.addEventListener(type, (e) => mapPointers.delete(e.pointerId));
+canvas.addEventListener(
+  'wheel',
+  (e) => {
+    const view = board.views && board.viewAt(e.clientX, e.clientY);
+    if (view?.name !== 'map') return;
+    e.preventDefault();
+    zoomMap(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
+  },
+  { passive: false },
+);
+canvas.addEventListener('dblclick', (e) => {
+  if (board.views && board.viewAt(e.clientX, e.clientY)?.name === 'map') resetCamera();
+});
+
 // --- Eraser and orders ----------------------------------------------------------
 
 function toggleEraser(side) {
@@ -368,11 +623,15 @@ function toggleMaking(side) {
   updateControls();
 }
 
-// The power the next chalkling gets (null = none). Only matters in Chalkling mode.
+// The powers the next chalkling gets. Press a power to add it or take it away
+// again; None clears them all. Each extra power splits the strength (two
+// powers: half each). Only matters for chalkling parts.
 function pickPower(side, power) {
   const seat = session?.state && session.seats[side];
   if (seat?.kind !== 'human') return;
-  seat.power = power || null;
+  if (!power) seat.powers = [];
+  else if (seat.powers.includes(power)) seat.powers = seat.powers.filter((p) => p !== power);
+  else seat.powers = [...seat.powers, power];
   updateControls();
 }
 
@@ -398,8 +657,13 @@ function updateControls() {
     if (box.hidden) continue;
     box.querySelector('[data-act="eraser"]').classList.toggle('selected', seat.eraser);
     box.querySelector('[data-act="making"]').classList.toggle('selected', seat.making);
-    box.querySelector('.power-picker').hidden = !seat.making;
-    for (const b of box.querySelectorAll('[data-power]')) b.classList.toggle('selected', (b.dataset.power || null) === seat.power);
+    box.querySelector('.power-picker').hidden = !(seat.making || detailWard());
+    for (const b of box.querySelectorAll('[data-power]')) {
+      b.classList.toggle('selected', b.dataset.power ? seat.powers.includes(b.dataset.power) : !seat.powers.length);
+    }
+    const detailBtn = box.querySelector('[data-act="detail"]');
+    detailBtn.hidden = !isSplit();
+    detailBtn.classList.toggle('selected', seat.detailPick);
     for (const order of ['attack', 'guard']) {
       box.querySelector(`[data-act="${order}"]`).classList.toggle('selected', session.state.orders[side] === order);
     }
@@ -467,11 +731,16 @@ function duelHint() {
   return `${where}Waves need 3+ humps: curved humps smash lines, spiky humps smash chalklings. Straight lines make walls (8 at most). To make a chalkling, press Chalkling (M).`;
 }
 
-// "Sword ×1.4 so far (more chalk, stronger). " for a creature still being drawn.
+// "Detail 6.2. Sword + Bow ×0.8 each so far (more detail, stronger). " for a
+// creature still being drawn.
 function powerSoFar(holding) {
-  if (!holding.power || !holding.creature?.length) return '';
-  const ink = holding.creature.reduce((sum, s) => sum + pathLength(s), 0);
-  return `${POWER_NAMES[holding.power]} ×${powerLevel(ink, CONFIG.powers).toFixed(1)} so far (more chalk, stronger). `;
+  if (!holding.creature?.length) return '';
+  const { detail } = measureCreature(holding.creature, CONFIG.chalkling, holding.creatureDetail);
+  const text = `Detail ${detail.toFixed(1)}. `;
+  const powers = holding.powers ?? [];
+  if (!powers.length) return text;
+  const each = powerLevel(detail, CONFIG.powers) / powers.length;
+  return `${text}${powers.map((p) => POWER_NAMES[p]).join(' + ')} ×${each.toFixed(1)}${powers.length > 1 ? ' each' : ''} so far (more detail, stronger). `;
 }
 
 // Step-by-step help while Chalkling mode is on.
@@ -480,7 +749,8 @@ function makingHint(state, side) {
   if (state.chains.some((c) => c.owner === side && !c.holdingId && !c.chalklingId)) return `${steps} 2. Draw a circle on the end of the chain.`;
   const holding = state.wards.find((w) => w.owner === side && w.holding);
   if (holding && !holding.creature?.length) {
-    return `${steps} 3. Pick a power above if you want one, then draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.`;
+    const zoom = isSplit() ? ' Tip: press Detail (F) and tap the circle to draw it big in the detail screen; detail there counts extra.' : '';
+    return `${steps} 3. Pick powers above if you want them, then draw your chalkling inside the circle. Spiky = attacker, bulky = defender, long and leggy = runner.${zoom}`;
   }
   const power = holding ? powerSoFar(holding) : '';
   if (holding && !state.paths.some((p) => p.holdingId === holding.id)) {
@@ -540,6 +810,7 @@ window.addEventListener('keydown', (e) => {
   else if (paused) return; // nothing else while paused
   else if (key === 'e') toggleEraser(side);
   else if (key === 'm') toggleMaking(side);
+  else if (key === 'f') toggleDetailPick(side);
   else if (key === 'a') giveOrder(side, 'attack');
   else if (key === 'g') giveOrder(side, 'guard');
 });
@@ -564,6 +835,7 @@ for (const box of document.querySelectorAll('.side-controls')) {
   const side = box.dataset.side;
   box.querySelector('[data-act="eraser"]').addEventListener('click', () => toggleEraser(side));
   box.querySelector('[data-act="making"]').addEventListener('click', () => toggleMaking(side));
+  box.querySelector('[data-act="detail"]').addEventListener('click', () => toggleDetailPick(side));
   for (const b of box.querySelectorAll('[data-power]')) b.addEventListener('click', () => pickPower(side, b.dataset.power));
   box.querySelector('[data-act="attack"]').addEventListener('click', () => giveOrder(side, 'attack'));
   box.querySelector('[data-act="guard"]').addEventListener('click', () => giveOrder(side, 'guard'));
@@ -612,6 +884,9 @@ for (const pick of document.querySelectorAll('.pick')) {
 
 // The single-file version (published page) has no game server, so no online play.
 if (window.RITHMATIST_STATIC) document.querySelector('.pick[data-group="mode"][data-value="online"]')?.remove();
+
+// For automated browser tests: where each panel is right now (read-only).
+window.rithmatistViews = () => board.views;
 
 showChoiceRows();
 updateControls();

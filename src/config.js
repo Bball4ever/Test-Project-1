@@ -121,11 +121,17 @@ export const CONFIG = {
     maxStrokes: 16,
     minInk: 60, // total chalk (units of line) needed to make anything at all
     maxSize: 220, // a creature can't be bigger than this across
-    // "Detail" decides how strong a creature is: more chalk, more strokes,
-    // and closed shapes (heads, bodies, eyes) all add to it.
-    detailPerInk: 1 / 150,
-    detailPerStroke: 0.25,
-    detailPerClosedShape: 1,
+    // "Detail" decides how strong a creature is (and how strong its powers
+    // are). It counts the separate features in the drawing, NOT how much
+    // chalk they used: each part, closed shapes (heads, eyes, shells), sharp
+    // corners (claws, teeth) and small parts. Parts drawn in the detail
+    // screen count extra.
+    detailPerStroke: 0.3,
+    detailPerClosedShape: 0.6,
+    detailPerCorner: 0.15,
+    detailPerSmallPart: 0.15,
+    smallPart: 0.3, // a part smaller than this fraction of the whole creature is "small"
+    detailScreenBonus: 1.5, // features drawn in the detail screen × this
     maxDetail: 15,
     closedGapRatio: 0.15, // a stroke whose ends meet this closely is a closed shape
     minClosedInk: 12, // ...and is at least this long (so a dot doesn't count)
@@ -160,12 +166,13 @@ export const CONFIG = {
   },
 
   // --- Chalkling powers ---
-  // Pick a power with the buttons while making a chalkling. The chalk spent on
-  // the creature sets how strong the power is: power level = creature chalk ÷
-  // chalkPerLevel, between minLevel and maxLevel (a quick stick figure is about
-  // ×0.5, a detailed beetle about ×1.4).
+  // Pick powers with the buttons while making a chalkling. The creature's
+  // detail sets how strong they are: power level = detail ÷ detailPerLevel,
+  // between minLevel and maxLevel (a quick stick figure is about ×0.6, a
+  // detailed beetle about ×2, drawn in the detail screen ×3). Pick two powers
+  // and each gets half the level; three, a third each; and so on.
   powers: {
-    chalkPerLevel: 300,
+    detailPerLevel: 4,
     minLevel: 0.5,
     maxLevel: 3,
     // What each power does at level L.
@@ -228,6 +235,7 @@ export const CONFIG = {
     //   powers         none | random | smart (picks the power that fits the moment)
     //   interrupts     drops what it's drawing to block an incoming wave, then carries on
     //   multitask      attacks while waiting for a chain to be erased
+    //   detailScreen   draws its chalklings in the detail screen (more detail)
     levels: {
       beginner: {
         name: 'Beginner',
@@ -276,7 +284,7 @@ export const CONFIG = {
         noise: 2.5, speed: 620, think: [900, 1550],
         defendChance: 0.8, counterChance: 0.8, aim: 'weakest',
         makeChance: 0.21, creature: 'beetle', holdRadius: 64,
-        defense: 'full', powers: 'smart',
+        defense: 'full', powers: 'smart', detailScreen: true,
       },
       professor: {
         name: 'Professor',
@@ -284,21 +292,21 @@ export const CONFIG = {
         defendChance: 0.9, counterChance: 0.9, aim: 'weakest',
         makeChance: 0.22, creature: 'beetle', holdRadius: 66,
         defense: 'full', // its shield and one wall; the bottom bind point stays free for chains
-        powers: 'smart',
+        powers: 'smart', detailScreen: true,
       },
       master: {
         name: 'Master',
         noise: 1.3, speed: 760, think: [620, 1150],
         defendChance: 0.95, counterChance: 0.95, aim: 'weakest',
         makeChance: 0.24, creature: 'beetle', holdRadius: 72,
-        defense: 'full', powers: 'smart', interrupts: true,
+        defense: 'full', powers: 'smart', detailScreen: true, interrupts: true,
       },
       grandmaster: {
         name: 'Grand master',
         noise: 0.9, speed: 850, think: [500, 950],
         defendChance: 0.98, counterChance: 0.98, aim: 'weakest',
         makeChance: 0.26, creature: 'beetle', holdRadius: 80,
-        defense: 'full', powers: 'smart', interrupts: true, multitask: true,
+        defense: 'full', powers: 'smart', detailScreen: true, interrupts: true, multitask: true,
       },
     },
   },

@@ -24,11 +24,13 @@ export class DuelRenderer {
   }
 
   // Pre-draw a line's chalk once; redraw only if the screen was resized.
+  // (Zoomed-in views get their own sharper copy.)
   cached(key, points, seed, color = R.chalkColor, strokes = null) {
     if (this.version !== this.board.version) {
       this.caches.clear();
       this.version = this.board.version;
     }
+    key = `${key}@${this.board.resolution}`;
     let c = this.caches.get(key);
     if (!c) {
       c = strokes
@@ -48,8 +50,8 @@ export class DuelRenderer {
       const top = topOf(thing.points ?? thing.strokes.flat());
       const text =
         e.kind === 'chalkling'
-          ? e.power
-            ? `It comes alive with ${POWER_NAMES[e.power]} ×${e.powerLevel.toFixed(1)}!`
+          ? e.powers?.length
+            ? `It comes alive with ${e.powers.map((p) => POWER_NAMES[p]).join(' + ')}!`
             : 'It comes alive!'
           : e.kind === 'vigor'
             ? `Vigor ${Math.round(e.quality * 100)}% · ${spikyText(e.spikiness)}`
@@ -111,7 +113,8 @@ export class DuelRenderer {
 
   // template: optional { parts, done, anchor, showMain } from a practice defense.
   // drafts: chalklings still being drawn in Making mode (lists of strokes).
-  draw(state, liveStrokes, now, template = null) {
+  // meters: false to leave out the chalk meters (shown once, in the map).
+  draw(state, liveStrokes, now, template = null, { meters = true } = {}) {
     const ctx = this.board.ctx;
     if (template) drawTemplate(ctx, template);
 
@@ -186,7 +189,7 @@ export class DuelRenderer {
     }
     for (const e of Object.values(state.erasing ?? {})) if (e?.at) drawEraser(ctx, e.at, e.targetId ? (e.progress ?? 0) : 0);
 
-    if (state.chalk) drawChalkMeters(ctx, state, this.board.world);
+    if (state.chalk && meters) drawChalkMeters(ctx, state, this.board.world);
     this.drawEffects(ctx, now);
   }
 
@@ -361,11 +364,13 @@ function statusText(c) {
 }
 
 // A chalkling's facts, always shown above it: role and what it's doing,
-// its health bar, its health, bite and speed, and its power (if it has one).
+// its health bar, its detail, health, bite and speed, and its powers (each
+// with its share of the power level).
 function drawFacts(ctx, c) {
   const line1 = `${ROLE_NAMES[c.role] ?? 'Chalkling'} · ${statusText(c)}`;
-  const line2 = `health ${Math.max(1, Math.round(c.hp))}/${Math.round(c.max)}  bite ${c.bite.toFixed(0)}  speed ${Math.round(c.speed)}`;
-  const line3 = c.power ? `${POWER_NAMES[c.power]} ×${c.powerLevel.toFixed(1)}` : '';
+  const line2 = `detail ${(c.detail ?? 0).toFixed(1)}  health ${Math.max(1, Math.round(c.hp))}/${Math.round(c.max)}  bite ${c.bite.toFixed(0)}  speed ${Math.round(c.speed)}`;
+  const n = c.powers?.length ?? 0;
+  const line3 = n ? c.powers.map((p) => `${POWER_NAMES[p]} ×${(c.powerLevel / n).toFixed(1)}`).join('  ') : '';
   ctx.save();
   ctx.font = '600 12px system-ui, sans-serif';
   const w = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width, ctx.measureText(line3).width) + 14;

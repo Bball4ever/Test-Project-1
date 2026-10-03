@@ -144,7 +144,7 @@ test('bots from Apprentice up give their chalklings powers; the first two levels
   const powersOf = (level) => {
     const seen = new Set();
     for (let seed = 1; seed <= 6; seed++) {
-      for (const e of botDuel(level, level, seed).placed) if (e.kind === 'chalkling' && e.owner === 'left') seen.add(e.power ?? 'none');
+      for (const e of botDuel(level, level, seed).placed) if (e.kind === 'chalkling' && e.owner === 'left') seen.add(e.powers?.length ? e.powers.join('+') : 'none');
     }
     return seen;
   };

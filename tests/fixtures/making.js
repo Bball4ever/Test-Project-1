@@ -37,9 +37,9 @@ export function chainAndCircle(state, side, k = 1, { chainLength = 90, r = 55 } 
 }
 
 // Step 3: draw the creature inside the circle.
-// power: the power button picked while drawing it (or null).
-export function drawCreature(state, side, strokes, center, r, power = null) {
-  return fitInside(strokes, center, r).map((s) => addStroke(state, side, s, { ...MAKING, power }));
+// powers: the power buttons picked while drawing it; detail: drawn in the detail screen.
+export function drawCreature(state, side, strokes, center, r, powers = [], detail = false) {
+  return fitInside(strokes, center, r).map((s) => addStroke(state, side, s, { ...MAKING, powers, detail }));
 }
 
 // Step 4: a path from the edge of the circle (or a chalkling) to `to`.
@@ -57,10 +57,10 @@ export function erase(state, side, at, seconds = 3.1) {
 }
 
 // All five steps. Returns the new chalkling (or null).
-export function makeChalklingBookWay(state, side, creature, { k = 1, to = null, r = 55, power = null } = {}) {
+export function makeChalklingBookWay(state, side, creature, { k = 1, to = null, r = 55, power = null, powers = power ? [power] : [], detail = false } = {}) {
   const before = new Set(state.chalklings.map((c) => c.id));
   const { center, chainMid } = chainAndCircle(state, side, k, { r });
-  drawCreature(state, side, creature, center, r, power);
+  drawCreature(state, side, creature, center, r, powers, detail);
   if (to) drawPath(state, side, center, r, to);
   erase(state, side, chainMid);
   return state.chalklings.find((c) => !before.has(c.id)) ?? null;

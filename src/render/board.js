@@ -8,14 +8,62 @@ const R = CONFIG.render;
 
 // The board is a fixed-size world (CONFIG.engine.world). We scale it to fit the
 // screen, keeping its shape, and leave dark bars at the sides if needed.
+//
+// The screen can also be split into several "views": rectangles that each show
+// part of the world at their own zoom (the split-screen layout's map, main
+// drawing screen and detail drawing screen). Normally there's just one view
+// showing the whole board.
 export class Board {
   constructor(canvas, world = CONFIG.engine.world) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.world = world;
     this.version = 0; // goes up on every resize, so cached pictures know to redraw
+    this.views = null; // null = one view of the whole board
     this.resize();
     window.addEventListener('resize', () => this.resize());
+  }
+
+  // The whole board, fitted to the whole screen.
+  fullView() {
+    return makeView('full', { x: 0, y: 0, w: this.canvas.clientWidth, h: this.canvas.clientHeight }, { x: 0, y: 0, w: this.world.width, h: this.world.height });
+  }
+
+  // Which view is at this screen position? (null if none)
+  viewAt(clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    const views = this.views ?? [this.fullView()];
+    return views.find((v) => x >= v.rect.x && x < v.rect.x + v.rect.w && y >= v.rect.y && y < v.rect.y + v.rect.h) ?? null;
+  }
+
+  // Screen position → world position, through a view.
+  viewToWorld(view, clientX, clientY) {
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: (clientX - rect.left - view.ox) / view.scale, y: (clientY - rect.top - view.oy) / view.scale };
+  }
+
+  // Start drawing one view: clip to its rectangle and set it up so everything
+  // is drawn in world units. Call endView() afterwards.
+  beginView(view) {
+    const ctx = this.ctx;
+    const d = this.dpr;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.beginPath();
+    ctx.rect(view.rect.x * d, view.rect.y * d, view.rect.w * d, view.rect.h * d);
+    ctx.clip();
+    ctx.setTransform(view.scale * d, 0, 0, view.scale * d, view.ox * d, view.oy * d);
+    ctx.drawImage(this.background, 0, 0, this.world.width, this.world.height);
+    // Cached chalk pictures are drawn at about this many real pixels per world
+    // unit (rounded to a few fixed steps, so zooming doesn't redraw every frame).
+    this.resolution = 2 ** (Math.round(Math.log2(view.scale * d) * 2) / 2);
+  }
+
+  endView() {
+    this.ctx.restore();
+    this.resolution = this.baseResolution;
   }
 
   // Match the canvas to its on-screen size. On sharp screens one CSS pixel is
@@ -31,6 +79,7 @@ export class Board {
     this.offsetY = (cssH - this.world.height * this.scale) / 2;
     // Real screen pixels per world unit: used to draw cached pictures sharply.
     this.resolution = this.dpr * this.scale;
+    this.baseResolution = this.resolution;
     this.background = makeBackground(this.world.width, this.world.height, this.resolution);
     this.version++;
   }
@@ -44,16 +93,28 @@ export class Board {
     };
   }
 
-  // Clear the screen and draw the empty board. Afterwards the canvas is set up
-  // so that everything is drawn in world units.
+  // Clear the screen. Then draw each view between beginView() and endView().
   beginFrame() {
     const ctx = this.ctx;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#0d130f';
     ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
-    ctx.setTransform(this.resolution, 0, 0, this.resolution, this.offsetX * this.dpr, this.offsetY * this.dpr);
-    ctx.drawImage(this.background, 0, 0, this.world.width, this.world.height);
   }
+}
+
+// A view showing the world rectangle `area` inside the screen rectangle `rect`
+// (CSS pixels), as big as fits. zoom > 1 zooms in on `focus` (a world point,
+// default the middle of `area`).
+export function makeView(name, rect, area, { zoom = 1, focus = null, pad = 0 } = {}) {
+  const scale = Math.min((rect.w - pad * 2) / area.w, (rect.h - pad * 2) / area.h) * zoom;
+  const f = focus ?? { x: area.x + area.w / 2, y: area.y + area.h / 2 };
+  return {
+    name,
+    rect,
+    scale,
+    ox: rect.x + rect.w / 2 - f.x * scale, // where world (0, 0) lands on screen
+    oy: rect.y + rect.h / 2 - f.y * scale,
+  };
 }
 
 // The board surface: dark green slate, old eraser smudges, fine grain,

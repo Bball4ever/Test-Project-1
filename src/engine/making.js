@@ -4,8 +4,10 @@
 // parts instead of ordinary lines:
 //   1. Chain:          a straight line from one of your bind points.
 //   2. Holding circle: a circle touching the chain's far end.
-//   3. Creature:       strokes drawn inside the holding circle. The power
-//                      picked with the buttons goes with it (see powers.js).
+//   3. Creature:       strokes drawn inside the holding circle (in the main
+//                      screen, or zoomed in on the detail screen, which counts
+//                      for more detail). The powers picked with the buttons
+//                      go with it (see powers.js).
 //   4. Path:           a line from the holding circle to where it should go.
 //                      Ending it on an enemy chalkling means "hunt that one".
 //   5. Release:        erase the chain (3 seconds). The chalkling breaks out.
@@ -47,10 +49,12 @@ export function holdingFor(state, owner, points) {
   return null;
 }
 
-export function addCreatureStroke(state, ward, points, power = null) {
+// detail: true if it was drawn in the detail screen (it counts for more).
+export function addCreatureStroke(state, ward, points, powers = [], detail = false) {
   if (ward.creature.length >= state.chalkCfg.maxStrokes) return { accepted: false, result: { type: 'dud', reason: 'creature has enough strokes', quality: 0 } };
   ward.creature.push(points);
-  ward.power = power; // the power picked when the latest part was drawn
+  ward.creatureDetail = [...(ward.creatureDetail ?? []), !!detail];
+  ward.powers = powers; // the powers picked when the latest part was drawn
   emit(state, { type: 'creatureStroke', owner: ward.owner, wardId: ward.id });
   return { accepted: true, result: { type: 'creature', reason: null, quality: 1, strokes: ward.creature.length } };
 }
@@ -95,7 +99,7 @@ export function addPath(state, owner, points, origin) {
 
 // A stroke drawn in Chalkling mode. Works out which step it is from what's
 // already on the board, and says what's needed next if it doesn't fit.
-export function addMakingStroke(state, owner, points, main, power = null) {
+export function addMakingStroke(state, owner, points, main, powers = [], detail = false) {
   const reject = (reason, result = null) => {
     emit(state, { type: 'dud', owner, reason, points });
     return { accepted: false, result: { ...(result ?? {}), type: 'dud', reason, quality: result?.quality ?? 0 } };
@@ -104,7 +108,9 @@ export function addMakingStroke(state, owner, points, main, power = null) {
 
   // 3. A stroke inside one of our holding circles is part of the creature.
   const holding = holdingFor(state, owner, points);
-  if (holding) return addCreatureStroke(state, holding, points, power);
+  if (holding) return addCreatureStroke(state, holding, points, powers, detail);
+  // The detail screen is only for drawing inside a holding circle.
+  if (detail) return reject('in the detail screen, draw inside the holding circle');
   // 4. A stroke leading out of a holding circle (or a chained chalkling) is its path.
   const origin = pathOrigin(state, owner, points);
   if (origin) return addPath(state, owner, points, origin);
@@ -159,7 +165,8 @@ export function addMakingStroke(state, owner, points, main, power = null) {
       holding: true,
       chainId: best.chain.id,
       creature: [],
-      power,
+      creatureDetail: [],
+      powers,
     };
     best.chain.holdingId = ward.id;
     state.wards.push(ward);
@@ -198,20 +205,22 @@ export function release(state, chain) {
   ward.holding = false;
   ward.chainId = null;
   const strokes = ward.creature;
+  const detailFlags = ward.creatureDetail ?? [];
   ward.creature = [];
+  ward.creatureDetail = [];
   if (!strokes.length) return; // nothing inside: it's just an ordinary small circle now
 
   const cc = state.chalkCfg;
-  const measure = measureCreature(strokes, cc);
+  const measure = measureCreature(strokes, cc, detailFlags);
   if (measure.ink < cc.minInk) {
     emit(state, { type: 'dud', owner: ward.owner, reason: 'too little chalk to come alive', points: strokes.flat(), strokes });
     return;
   }
   // The creature breaks out and the holding circle is gone.
   ward.gone = true;
-  const c = makeChalkling(state.nextId++, ward.owner, strokes, measure, cc, state.orders[ward.owner], ward.power, state.powerCfg);
+  const c = makeChalkling(state.nextId++, ward.owner, strokes, measure, cc, state.orders[ward.owner], ward.powers ?? [], state.powerCfg);
   state.chalklings.push(c);
-  emit(state, { type: 'placed', owner: c.owner, kind: 'chalkling', id: c.id, quality: measure.detail / cc.maxDetail, role: c.role, power: c.power, powerLevel: c.powerLevel });
+  emit(state, { type: 'placed', owner: c.owner, kind: 'chalkling', id: c.id, quality: measure.detail / cc.maxDetail, role: c.role, powers: c.powers, powerLevel: c.powerLevel, detail: c.detail });
   command(state, c, path);
 }
 

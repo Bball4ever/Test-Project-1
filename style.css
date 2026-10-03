@@ -286,3 +286,26 @@ button.primary:hover {
 [hidden] {
   display: none !important;
 }
+
+/* Split screen: the header, buttons and your controls sit over the map half,
+   so they don't cover the drawing screens. */
+body[data-split] .hud,
+body[data-split] .side-controls .power-picker {
+  max-width: calc(50vw - 32px);
+}
+
+body[data-split='left'] .hud,
+body[data-split='left'] .buttons,
+body[data-split='left'] .side-controls[data-side='left'],
+body[data-split='left'] .side-controls[data-side='left'] .power-picker {
+  left: calc(50vw + 16px);
+}
+
+body[data-split='left'] .hud {
+  top: 26px; /* below the map's caption */
+}
+
+body[data-split] .side-controls {
+  flex-wrap: wrap;
+  max-width: calc(50vw - 32px);
+}

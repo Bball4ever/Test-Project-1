@@ -59,8 +59,10 @@ export function mainWard(state, side) {
 // A duelist draws a stroke. Returns { accepted, result } where result is the
 // recognizer's verdict (turned into a dud if a duel rule rejects it).
 // making: true when the duelist has Chalkling mode on (see making.js).
-// power: the chalkling power picked with the buttons (making strokes only).
-export function addStroke(state, owner, rawPoints, { making = false, power = null } = {}) {
+// powers: the chalkling powers picked with the buttons (making strokes only).
+// detail: true if it was drawn in the detail screen (always a making stroke).
+export function addStroke(state, owner, rawPoints, { making = false, powers = [], detail = false } = {}) {
+  if (detail) making = true;
   if (state.winner || !rawPoints.length) return { accepted: false, result: null };
   const cfg = state.cfg;
   const points = rawPoints.map((p) => ({ x: p.x, y: p.y }));
@@ -75,7 +77,7 @@ export function addStroke(state, owner, rawPoints, { making = false, power = nul
   }
   state.chalk[owner] -= cost;
 
-  if (making) return addMakingStroke(state, owner, points, mainWard(state, owner), power);
+  if (making) return addMakingStroke(state, owner, points, mainWard(state, owner), powers, detail);
 
   const reject = (reason) => {
     const dud = { ...result, type: 'dud', reason, guess: result.guess ?? null };

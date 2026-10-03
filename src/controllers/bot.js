@@ -87,11 +87,10 @@ export class BotController {
           owner: this.owner,
           seed: plan.seed + plan.index,
           making: !!stepNow.making,
-          power: stepNow.power ?? null,
           points: stroke.slice(0, Math.max(2, Math.ceil(t * stroke.length))),
         };
       } else {
-        act({ type: 'stroke', points: stroke, making: !!stepNow.making, power: stepNow.power ?? null });
+        act({ type: 'stroke', points: stroke, making: !!stepNow.making, powers: stepNow.powers ?? [], detail: !!stepNow.detail });
         done = true;
       }
     } else if (stepNow.kind === 'erase') {
@@ -390,7 +389,8 @@ export class BotController {
           { kind: 'stroke', points: this.shaky(line(bind, end)), making: true },
           { kind: 'stroke', points: this.shaky(ring), making: true },
           { kind: 'check', test: (s) => s.wards.some((w) => w.owner === this.owner && w.holding) },
-          ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true, power })),
+          // Top levels draw the creature in the detail screen (it counts for more).
+          ...creature.map((stroke) => ({ kind: 'stroke', points: this.shaky(stroke), making: true, powers: power ? [power] : [], detail: !!this.level.detailScreen })),
           { kind: 'stroke', points: this.shaky(line(pathStart, foe.center)), making: true },
           { kind: 'erase', at: chainMid, ms: this.cfg.making.eraseMs + 300 },
         ],
@@ -411,7 +411,7 @@ export class BotController {
     if (how === 'random') return POWERS[Math.floor(this.rng() * POWERS.length)];
     if (how !== 'smart') return null;
     const mine = state.chalklings.filter((c) => !c.gone && c.owner === this.owner);
-    if (mine.length >= 2 && !mine.some((c) => c.power === 'healer')) return 'healer';
+    if (mine.length >= 2 && !mine.some((c) => c.powers?.includes('healer'))) return 'healer';
     if (state.chalklings.some((c) => !c.gone && c.owner !== this.owner)) return 'bow';
     this.madeCount = (this.madeCount ?? 0) + 1;
     return this.madeCount % 2 ? 'bow' : 'shield';
