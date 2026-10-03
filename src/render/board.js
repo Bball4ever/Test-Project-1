@@ -41,7 +41,7 @@ export class Board {
   // Screen position → world position, through a view.
   viewToWorld(view, clientX, clientY) {
     const rect = this.canvas.getBoundingClientRect();
-    return { x: (clientX - rect.left - view.ox) / view.scale, y: (clientY - rect.top - view.oy) / view.scale };
+    return viewStep(view, clientX - rect.left - view.ox, clientY - rect.top - view.oy);
   }
 
   // Start drawing one view: clip to its rectangle and set it up so everything
@@ -54,7 +54,7 @@ export class Board {
     ctx.beginPath();
     ctx.rect(view.rect.x * d, view.rect.y * d, view.rect.w * d, view.rect.h * d);
     ctx.clip();
-    ctx.setTransform(view.scale * d, 0, 0, view.scale * d, view.ox * d, view.oy * d);
+    ctx.setTransform(view.a * d, view.b * d, view.c * d, view.d * d, view.ox * d, view.oy * d);
     ctx.drawImage(this.background, 0, 0, this.world.width, this.world.height);
     // Cached chalk pictures are drawn at about this many real pixels per world
     // unit (rounded to a few fixed steps, so zooming doesn't redraw every frame).
@@ -105,16 +105,34 @@ export class Board {
 // A view showing the world rectangle `area` inside the screen rectangle `rect`
 // (CSS pixels), as big as fits. zoom > 1 zooms in on `focus` (a world point,
 // default the middle of `area`).
-export function makeView(name, rect, area, { zoom = 1, focus = null, pad = 0 } = {}) {
-  const scale = Math.min((rect.w - pad * 2) / area.w, (rect.h - pad * 2) / area.h) * zoom;
+//
+// turn: 0 = the world as it is; -1 = turned a quarter to the left, so the
+// world's left edge is at the BOTTOM and its right edge at the top (the left
+// duelist sees their own side nearest them); 1 = turned the other way.
+export function makeView(name, rect, area, { zoom = 1, focus = null, pad = 0, turn = 0 } = {}) {
+  const [aw, ah] = turn ? [area.h, area.w] : [area.w, area.h]; // how big the area looks on screen
+  const scale = Math.min((rect.w - pad * 2) / aw, (rect.h - pad * 2) / ah) * zoom;
   const f = focus ?? { x: area.x + area.w / 2, y: area.y + area.h / 2 };
+  // screen x = a·x + c·y + ox,  screen y = b·x + d·y + oy  (x, y in the world)
+  const [a, b, c, d] = turn === 0 ? [scale, 0, 0, scale] : turn < 0 ? [0, -scale, scale, 0] : [0, scale, -scale, 0];
   return {
     name,
     rect,
     scale,
-    ox: rect.x + rect.w / 2 - f.x * scale, // where world (0, 0) lands on screen
-    oy: rect.y + rect.h / 2 - f.y * scale,
+    turn,
+    a,
+    b,
+    c,
+    d,
+    ox: rect.x + rect.w / 2 - (a * f.x + c * f.y), // where world (0, 0) lands on screen
+    oy: rect.y + rect.h / 2 - (b * f.x + d * f.y),
   };
+}
+
+// A screen-sized step (dx, dy) as a world-sized step, through a view.
+export function viewStep(view, dx, dy) {
+  const det = view.a * view.d - view.b * view.c;
+  return { x: (view.d * dx - view.c * dy) / det, y: (-view.b * dx + view.a * dy) / det };
 }
 
 // The board surface: dark green slate, old eraser smudges, fine grain,

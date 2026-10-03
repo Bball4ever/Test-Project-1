@@ -114,8 +114,10 @@ export class DuelRenderer {
   // template: optional { parts, done, anchor, showMain } from a practice defense.
   // drafts: chalklings still being drawn in Making mode (lists of strokes).
   // meters: false to leave out the chalk meters (shown once, in the map).
-  draw(state, liveStrokes, now, template = null, { meters = true } = {}) {
+  // turn: the view's quarter-turn (see makeView), so text can stay upright.
+  draw(state, liveStrokes, now, template = null, { meters = true, turn = 0 } = {}) {
     const ctx = this.board.ctx;
+    this.turn = turn;
     if (template) drawTemplate(ctx, template);
 
     // Lines being rubbed out fade as the 3 seconds tick by.
@@ -152,7 +154,7 @@ export class DuelRenderer {
       this.drawDamage(ctx, ward);
       if (ward.main) {
         drawBindPoints(ctx, ward);
-        drawDuelist(ctx, ward.center);
+        upright(ctx, ward.center, this.turn, () => drawDuelist(ctx, ward.center));
       }
       if (ward.creature?.length) {
         const pic = this.cached(`cr${ward.id}:${ward.creature.length}`, null, ward.id * 31, R.makingColor, ward.creature);
@@ -176,6 +178,7 @@ export class DuelRenderer {
     for (const c of state.chalklings) {
       if (c.mode === 'path' && c.path) drawPathLine(ctx, c.path, c.pathIndex, 0.35, null);
       this.drawChalkling(ctx, c, now);
+      upright(ctx, c.pos, this.turn, () => drawFacts(ctx, c));
     }
     for (const c of state.chalklings) {
       if (c.mode === 'hunt') {
@@ -222,8 +225,6 @@ export class DuelRenderer {
     ctx.translate(-c.origin.x, -c.origin.y);
     ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h);
     ctx.restore();
-
-    drawFacts(ctx, c);
   }
 
   // Rub out damaged sections: draw the bare board back over them,
@@ -275,7 +276,9 @@ export class DuelRenderer {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         ctx.fillStyle = `rgba(${f.color}, 0.9)`;
-        ctx.fillText(f.text, clampX(f.x, this.board.world.width), Math.max(24, f.y - (f.rise ?? 0) * t));
+        const at = { x: clampX(f.x, this.board.world.width), y: Math.max(24, f.y) };
+        // Labels float "up" the screen even on a turned map.
+        upright(ctx, at, this.turn, () => ctx.fillText(f.text, at.x, at.y - (f.rise ?? 0) * t));
       } else if (f.kind === 'dust') {
         ctx.fillStyle = `rgba(${R.chalkColor}, ${0.7 * (1 - t)})`;
         const secs = (now - f.born) / 1000;
@@ -554,6 +557,18 @@ function topOf(points) {
     maxX = Math.max(maxX, p.x);
   }
   return { x: (minX + maxX) / 2, y: top.y };
+}
+
+// Draw something (text, a label box) the right way up on a turned view,
+// by turning it back around the point `at`.
+function upright(ctx, at, turn, draw) {
+  if (!turn) return draw();
+  ctx.save();
+  ctx.translate(at.x, at.y);
+  ctx.rotate((-turn * Math.PI) / 2);
+  ctx.translate(-at.x, -at.y);
+  draw();
+  ctx.restore();
 }
 
 function clampX(x, width) {

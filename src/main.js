@@ -20,7 +20,7 @@ import { measureCreature } from './engine/chalklings.js';
 import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
 import { BotController } from './controllers/bot.js';
-import { Board, makeView } from './render/board.js';
+import { Board, makeView, viewStep } from './render/board.js';
 import { DuelRenderer } from './render/duel.js';
 import { drawDuelDebug, debugPanelText } from './render/debug.js';
 import { DEFENSES, findDefense, layoutDefense, tracedParts } from './data/defenses.js';
@@ -326,7 +326,7 @@ function frame(now) {
       if (view.empty) continue;
       board.beginView(view);
       // The chalk meters are shown once: on the map (or the one board).
-      renderer.draw(state, live, now, template, { meters: view.name === 'map' || view.name === 'full' });
+      renderer.draw(state, live, now, template, { meters: view.name === 'full', turn: view.turn ?? 0 });
       if (target && view.name !== 'detail') markDetailCircle(board.ctx, target);
       if (debug) drawDuelDebug(board.ctx, state);
       board.endView();
@@ -337,7 +337,7 @@ function frame(now) {
       board.endView();
     }
   }
-  if (board.views) drawPanelFrames(board.ctx, board.views, board.dpr);
+  if (board.views) drawPanelFrames(board.ctx, board.views, board.dpr, session?.state);
   updateHud();
   requestAnimationFrame(frame);
 }
@@ -423,20 +423,26 @@ function layoutViews() {
   }
   const W = canvas.clientWidth;
   const H = canvas.clientHeight;
-  const half = W / 2;
-  const drawX = session.screen === 'right' ? half : 0;
-  const mapX = session.screen === 'right' ? 0 : half;
   const { width, height } = board.world;
-  const map = makeView('map', { x: mapX, y: 0, w: half, h: H }, { x: 0, y: 0, w: width, h: height }, { zoom: camera.zoom, focus: camera.focus, pad: 8 });
-  const mainH = Math.round(H * 0.58);
-  const main = makeView('main', { x: drawX, y: 0, w: half, h: mainH }, myArea(), { pad: 6 });
+  // The map is turned so the battle runs up and down, your side at the
+  // bottom. Turned, the board is tall and thin, so the map only needs a narrow
+  // column and the drawing screens get the rest of the width.
+  const turn = keyboardSide() === 'left' ? -1 : 1;
+  const mapW = Math.round(Math.min(W * 0.42, ((H - 16) * height) / width + 16));
+  const drawW = W - mapW;
+  const drawX = session.screen === 'right' ? mapW : 0;
+  const mapX = session.screen === 'right' ? 0 : drawW;
+  document.body.style.setProperty('--map-w', `${mapW}px`);
+  const map = makeView('map', { x: mapX, y: 0, w: mapW, h: H }, { x: 0, y: 0, w: width, h: height }, { zoom: camera.zoom, focus: camera.focus, pad: 8, turn });
+  const mainH = Math.round(H * 0.6);
+  const main = makeView('main', { x: drawX, y: 0, w: drawW, h: mainH }, myArea(drawW / mainH), { pad: 6 });
   const ward = detailWard();
   if ((ward?.id ?? null) !== shownDetail) {
     shownDetail = ward?.id ?? null;
     updateControls(); // the power buttons show while a creature can be drawn
   }
-  const detailRect = { x: drawX, y: mainH, w: half, h: H - mainH };
-  const r = ward ? ward.radius * 1.15 : 0;
+  const detailRect = { x: drawX, y: mainH, w: drawW, h: H - mainH };
+  const r = ward ? ward.radius * 1.08 : 0;
   const detail = ward
     ? makeView('detail', detailRect, { x: ward.center.x - r, y: ward.center.y - r, w: 2 * r, h: 2 * r }, { pad: 10 })
     : { name: 'detail', rect: detailRect, empty: true };
@@ -445,8 +451,10 @@ function layoutViews() {
 
 // Your area of the map, for the main drawing screen: your half of the board
 // until you've drawn your circle, then your circle and everything attached to
-// it, with room around it (below it for chains and holding circles).
-function myArea() {
+// it, with room around it (below it for chains and holding circles). It's
+// widened to the screen's shape with more of your own side (toward the middle
+// first), rather than showing empty space past the edge of the board.
+function myArea(aspect) {
   const { width, height } = board.world;
   const me = keyboardSide();
   const half = { x0: me === 'left' ? 0 : width / 2, x1: me === 'left' ? width / 2 : width };
@@ -454,7 +462,8 @@ function myArea() {
   if (!main) return { x: half.x0, y: 0, w: half.x1 - half.x0, h: height };
   const { x, y } = main.center;
   const R = main.radius;
-  const box = { x0: x - R - 140, x1: x + R + 140, y0: y - R - 100, y1: y + R + 230 };
+  // Room for walls and waves around it, and below it for chains and holding circles.
+  const box = { x0: x - R - 140, x1: x + R + 140, y0: y - R - 70, y1: y + R + 190 };
   const grow = (p, pad = 70) => {
     box.x0 = Math.min(box.x0, p.x - pad);
     box.x1 = Math.max(box.x1, p.x + pad);
@@ -464,10 +473,19 @@ function myArea() {
   const s = session.state;
   for (const w of s.wards) if (w.owner === me && !w.gone && !w.main) grow(w.center, w.radius + 60);
   for (const w of [...s.walls, ...s.chains]) if (w.owner === me && !w.gone) [w.from, w.to].forEach((p) => grow(p));
-  const x0 = Math.max(half.x0, box.x0);
-  const x1 = Math.min(half.x1, box.x1);
+  let x0 = Math.max(half.x0, box.x0);
+  let x1 = Math.min(half.x1, box.x1);
   const y0 = Math.max(0, box.y0);
   const y1 = Math.min(height, box.y1);
+  let extra = (y1 - y0) * aspect - (x1 - x0);
+  if (extra > 0) {
+    const inward = me === 'left' ? Math.min(extra, half.x1 - x1) : Math.min(extra, x0 - half.x0);
+    if (me === 'left') x1 += inward;
+    else x0 -= inward;
+    extra -= inward;
+    if (me === 'left') x0 = Math.max(half.x0, x0 - extra);
+    else x1 = Math.min(half.x1, x1 + extra);
+  }
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
@@ -509,10 +527,10 @@ function markDetailCircle(ctx, ward) {
 }
 
 // Borders and names for the three panels, drawn over everything.
-function drawPanelFrames(ctx, views, dpr) {
+function drawPanelFrames(ctx, views, dpr, state) {
   ctx.save();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  const captions = { map: 'MAP · drag to move · scroll or pinch to zoom · double-click to reset', main: 'YOUR AREA', detail: 'DETAIL' };
+  const captions = { map: 'MAP · drag, scroll or pinch', main: 'YOUR AREA', detail: 'DETAIL' };
   for (const v of views) {
     const { x, y, w, h } = v.rect;
     if (v.empty) {
@@ -532,9 +550,39 @@ function drawPanelFrames(ctx, views, dpr) {
     ctx.fillStyle = 'rgba(235, 238, 228, 0.55)';
     ctx.textBaseline = 'top';
     ctx.textAlign = v.name === 'map' ? 'right' : 'left';
-    ctx.fillText(captions[v.name], v.name === 'map' ? x + w - 10 : x + 10, y + 8);
+    const cap = v.name === 'map' ? { x: x + w - 10, y: h - 22 + y } : { x: x + 10, y: y + 8 };
+    ctx.fillText(captions[v.name], cap.x, cap.y);
+    if (v.name === 'main' && state?.chalk) drawChalkStrip(ctx, v.rect, state);
   }
   ctx.restore();
+}
+
+// Both duelists' chalk, as two small meters along the top of Your area.
+function drawChalkStrip(ctx, rect, state) {
+  if (!Number.isFinite(state.chalkStart)) return;
+  const me = keyboardSide();
+  const rows = [
+    ['You', me],
+    ['Enemy', me === 'left' ? 'right' : 'left'],
+  ];
+  let x = rect.x + rect.w - 10;
+  ctx.font = '600 11px system-ui, sans-serif';
+  ctx.textBaseline = 'top';
+  for (const [label, side] of rows.reverse()) {
+    const left = Math.max(0, state.chalk[side] ?? 0);
+    const share = left / state.chalkStart;
+    const barW = 90;
+    x -= barW;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ctx.fillRect(x, rect.y + 10, barW, 7);
+    ctx.fillStyle = share < 0.15 ? `rgba(${CONFIG.render.dudColor}, 0.9)` : `rgba(${CONFIG.render.chalkColor}, 0.85)`;
+    ctx.fillRect(x, rect.y + 10, barW * share, 7);
+    const text = `${label} ${Math.round(left).toLocaleString()}`;
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(235, 238, 228, 0.75)';
+    ctx.fillText(text, x - 6, rect.y + 7);
+    x -= ctx.measureText(text).width + 22;
+  }
 }
 
 // Moving and zooming the map: drag with one finger or the mouse, pinch with
@@ -579,7 +627,8 @@ canvas.addEventListener('pointermove', (e) => {
   const now = { x: e.clientX, y: e.clientY };
   if (mapPointers.size === 1) {
     const focus = camera.focus ?? { x: board.world.width / 2, y: board.world.height / 2 };
-    camera.focus = clampFocus({ x: focus.x - (now.x - last.x) / view.scale, y: focus.y - (now.y - last.y) / view.scale });
+    const moved = viewStep(view, now.x - last.x, now.y - last.y); // the map is turned, so ask the view
+    camera.focus = clampFocus({ x: focus.x - moved.x, y: focus.y - moved.y });
   } else if (mapPointers.size === 2) {
     const other = [...mapPointers].find(([id]) => id !== e.pointerId)[1];
     const before = Math.hypot(last.x - other.x, last.y - other.y);

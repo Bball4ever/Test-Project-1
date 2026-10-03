@@ -72,9 +72,9 @@ Bots use powers too, from level 3 up (see below).
 
 On the start screen, **Your screen** chooses **Draw on the right** (the default), **Draw on the left**, or **One board** (the old single view).
 
-With a split screen:
-- **The map** (the other half) shows the whole battle. Drag to move around, scroll or pinch to zoom, double-click to reset. It's for watching; you don't draw on it.
-- **Your area** (top of your drawing half) is where you draw: your circle and everything attached to it. Before your circle exists it shows your whole half of the board; after, it frames your circle and its attachments.
+With a split screen, the screen has a map on one side and two drawing screens on the other:
+- **The map** (a narrow column) shows the whole battle, turned so it runs up and down: your side at the bottom, the enemy at the top. Drag to move around, scroll or pinch to zoom, double-click to reset. It's for watching; you don't draw on it.
+- **Your area** (top of the drawing side, which takes about two thirds of the screen's width) is where you draw: your circle and everything attached to it. Before your circle exists it shows your whole half of the board; after, it frames your circle and its attachments. Both duelists' chalk meters are along its top.
 - **The detail screen** (bottom of your drawing half): press **Detail** (or F), then tap a holding circle in Your area. That circle appears zoomed in, and what you draw there lands inside the real holding circle at its real (small) size. Parts drawn there count ×1.5 detail.
 
 Same-screen play keeps one board, since two players can't each have their own split. This layout is the start of the online version, where the map could hold 2 to 10 players.

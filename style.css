@@ -287,25 +287,48 @@ button.primary:hover {
   display: none !important;
 }
 
-/* Split screen: the header, buttons and your controls sit over the map half,
-   so they don't cover the drawing screens. */
+/* Split screen: the header, buttons and your controls sit over the map
+   (a narrow column; --map-w is set by the game), so they don't cover the
+   drawing screens. They're a little smaller there to fit. */
 body[data-split] .hud,
+body[data-split] .buttons,
+body[data-split] .side-controls,
 body[data-split] .side-controls .power-picker {
-  max-width: calc(50vw - 32px);
+  max-width: calc(var(--map-w, 50vw) - 24px);
+}
+
+body[data-split] .hud h1 {
+  display: none;
+}
+
+body[data-split] .hud p {
+  font-size: 12px;
+}
+
+body[data-split] .buttons,
+body[data-split] .side-controls {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+body[data-split] .buttons button,
+body[data-split] .side-controls button {
+  padding: 5px 8px;
+  min-height: 32px;
+  font-size: 12px;
+}
+
+body[data-split] .side-controls .power-picker {
+  top: 52px;
+}
+
+body[data-split] .side-controls {
+  bottom: 52px;
 }
 
 body[data-split='left'] .hud,
 body[data-split='left'] .buttons,
 body[data-split='left'] .side-controls[data-side='left'],
 body[data-split='left'] .side-controls[data-side='left'] .power-picker {
-  left: calc(50vw + 16px);
-}
-
-body[data-split='left'] .hud {
-  top: 26px; /* below the map's caption */
-}
-
-body[data-split] .side-controls {
-  flex-wrap: wrap;
-  max-width: calc(50vw - 32px);
+  left: calc(100vw - var(--map-w, 50vw) + 12px);
 }
