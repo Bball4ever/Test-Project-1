@@ -158,7 +158,8 @@ export class DuelRenderer {
       }
       if (ward.creature?.length) {
         const pic = this.cached(`cr${ward.id}:${ward.creature.length}`, null, ward.id * 31, R.makingColor, ward.creature);
-        ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h);
+        // On the turned map, the creature stays the right way up.
+        upright(ctx, ward.center, this.turn, () => ctx.drawImage(pic.canvas, pic.x, pic.y, pic.w, pic.h));
       }
     }
 
@@ -177,7 +178,8 @@ export class DuelRenderer {
 
     for (const c of state.chalklings) {
       if (c.mode === 'path' && c.path) drawPathLine(ctx, c.path, c.pathIndex, 0.35, null);
-      this.drawChalkling(ctx, c, now);
+      // On the turned map, chalklings stay the right way up (shadow under their feet).
+      upright(ctx, c.pos, this.turn, () => this.drawChalkling(ctx, c, now));
       upright(ctx, c.pos, this.turn, () => drawFacts(ctx, c));
     }
     for (const c of state.chalklings) {
