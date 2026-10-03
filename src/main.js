@@ -46,6 +46,7 @@ let net = null; // the online connection, if any
 let lastStroke = null; // for the debug panel and "Save stroke"
 let lastSentRaw = null; // online: the points of our last stroke, until the server's verdict arrives
 let endShown = false;
+let watching = false; // knocked out of a free-for-all, but watching the rest
 let debug = false;
 let paused = false;
 let tryWithoutTouch = false;
@@ -144,6 +145,7 @@ function beginDuel() {
   renderer.reset();
   human.cancelAll();
   endShown = false;
+  watching = false;
   lastStroke = null;
   accumulator = 0;
   breachAt = null;
@@ -178,7 +180,8 @@ function showEnd() {
     const waves = seats.left.waves;
     const bots = `${n - 1} ${CONFIG.bot.levels[choices.level].name} bots`;
     $('end-title').textContent = won ? 'Last circle standing! You win.' : `You were breached: ${ordinal(place)} of ${n}.`;
-    $('end-stats').textContent = `${secs} seconds against ${bots}. You threw ${waves} Line${waves === 1 ? '' : 's'} of Vigor.`;
+    const winner = state.winner && !won ? ` The last circle standing: ${playerName(state.winner)}.` : '';
+    $('end-stats').textContent = `${secs} seconds against ${bots}. You threw ${waves} Line${waves === 1 ? '' : 's'} of Vigor.${winner}`;
   } else {
     const me = mode === 'online' ? session.mySide : 'left';
     const waves = seats[me].waves;
@@ -186,7 +189,21 @@ function showEnd() {
     $('end-title').textContent = state.winner === me ? 'Breach! You win.' : 'You were breached.';
     $('end-stats').textContent = `${secs} seconds against ${against}. You threw ${waves} Line${waves === 1 ? '' : 's'} of Vigor.`;
   }
+  // Knocked out of a free-for-all that's still going: you can watch the rest.
+  $('btn-watch').hidden = !(state.players?.length > 2 && !state.winner);
   $('end').hidden = false;
+}
+
+function keepWatching() {
+  watching = true;
+  endShown = false; // the end screen comes back when someone wins
+  $('end').hidden = true;
+  showToast("You're out. Watching the rest of the battle: the map shows everyone.");
+}
+
+// "You", or "Bot 3" (bots are numbered in the order they sit round the ring).
+function playerName(id) {
+  return id === 'left' ? 'You' : `Bot ${session.state.players.indexOf(id)}`;
 }
 
 function backToMenu() {
@@ -325,7 +342,7 @@ function frame(now) {
     sendLiveStroke(now);
     // The duel is over for you when someone has won, or (with several bots)
     // when you've been breached.
-    const over = state.winner || state.out?.includes(keyboardSide());
+    const over = state.winner || (!watching && state.out?.includes(keyboardSide()));
     if (over && !endShown && now - breachAt > 1400) showEnd();
   }
 
@@ -445,28 +462,26 @@ function layoutViews() {
   const W = canvas.clientWidth;
   const H = canvas.clientHeight;
   const { width, height } = board.world;
-  // The map is turned so the battle runs up and down, your side at the
-  // bottom. Turned, the board is tall and thin, so the map only needs a narrow
-  // column and the drawing screens get the rest of the width.
-  // Turned so that your home is at the bottom of the map.
+  // The screen in quarters: the map fills the half away from your drawing
+  // side; Your area is the top quarter of your side, and the detail screen the
+  // bottom quarter (bottom-right when you draw on the right).
+  const half = Math.round(W / 2);
+  const drawX = session.screen === 'right' ? half : 0;
+  const mapX = session.screen === 'right' ? 0 : half;
+  const top = Math.round(H / 2);
+  document.body.style.setProperty('--map-w', `${half}px`);
+  // The map is turned so that your home is at the bottom.
   const home = session.state.homes?.[keyboardSide()] ?? { x: width / 4, y: height / 2 };
   const angle = Math.PI / 2 - Math.atan2(home.y - height / 2, home.x - width / 2);
-  const turnedW = Math.abs(Math.cos(angle)) * width + Math.abs(Math.sin(angle)) * height;
-  const turnedH = Math.abs(Math.sin(angle)) * width + Math.abs(Math.cos(angle)) * height;
-  const mapW = Math.round(Math.min(W * 0.42, ((H - 16) * turnedW) / turnedH + 16));
-  const drawW = W - mapW;
-  const drawX = session.screen === 'right' ? mapW : 0;
-  const mapX = session.screen === 'right' ? 0 : drawW;
-  document.body.style.setProperty('--map-w', `${mapW}px`);
-  const map = makeView('map', { x: mapX, y: 0, w: mapW, h: H }, { x: 0, y: 0, w: width, h: height }, { zoom: camera.zoom, focus: camera.focus, pad: 8, angle });
-  const mainH = Math.round(H * 0.6);
-  const main = makeView('main', { x: drawX, y: 0, w: drawW, h: mainH }, myArea(drawW / mainH), { pad: 6 });
+  const map = makeView('map', { x: mapX, y: 0, w: half, h: H }, { x: 0, y: 0, w: width, h: height }, { zoom: camera.zoom, focus: camera.focus, pad: 8, angle });
+  const mainRect = { x: drawX, y: 0, w: W - half, h: top };
+  const main = makeView('main', mainRect, myArea(mainRect.w / mainRect.h), { pad: 6 });
   const ward = detailWard();
   if ((ward?.id ?? null) !== shownDetail) {
     shownDetail = ward?.id ?? null;
     updateControls(); // the power buttons show while a creature can be drawn
   }
-  const detailRect = { x: drawX, y: mainH, w: drawW, h: H - mainH };
+  const detailRect = { x: drawX, y: top, w: W - half, h: H - top };
   const r = ward ? ward.radius * 1.08 : 0;
   const detail = ward
     ? makeView('detail', detailRect, { x: ward.center.x - r, y: ward.center.y - r, w: 2 * r, h: 2 * r }, { pad: 10 })
@@ -474,50 +489,18 @@ function layoutViews() {
   board.views = [map, main, detail];
 }
 
-// Your area of the map, for the main drawing screen: your half of the board
-// until you've drawn your circle, then your circle and everything attached to
-// it, with room around it (below it for chains and holding circles). It's
-// widened to the screen's shape with more of your own side (toward the middle
-// first), rather than showing empty space past the edge of the board.
+// Your area of the map, for the main drawing screen: a fixed view around your
+// home (it doesn't move or zoom while you play). It's 640 board units tall,
+// from a little above your circle to below where chains and holding circles
+// go, and as wide as the screen's shape allows, kept on the board.
 function myArea(aspect) {
   const { width, height } = board.world;
-  const me = keyboardSide();
-  const many = session.state.players?.length > 2;
-  // With 2 players your area is your half; with more, the board around your home.
-  const half = many ? { x0: 0, x1: width } : { x0: me === 'left' ? 0 : width / 2, x1: me === 'left' ? width / 2 : width };
-  const main = mainWard(session.state, me);
-  if (!main && many) {
-    const home = session.state.homes[me];
-    return { x: home.x - 450, y: home.y - 450, w: 900, h: 900 };
-  }
-  if (!main) return { x: half.x0, y: 0, w: half.x1 - half.x0, h: height };
-  const { x, y } = main.center;
-  const R = main.radius;
-  // Room for walls and waves around it, and below it for chains and holding circles.
-  const box = { x0: x - R - 140, x1: x + R + 140, y0: y - R - 70, y1: y + R + 190 };
-  const grow = (p, pad = 70) => {
-    box.x0 = Math.min(box.x0, p.x - pad);
-    box.x1 = Math.max(box.x1, p.x + pad);
-    box.y0 = Math.min(box.y0, p.y - pad);
-    box.y1 = Math.max(box.y1, p.y + pad);
-  };
-  const s = session.state;
-  for (const w of s.wards) if (w.owner === me && !w.gone && !w.main) grow(w.center, w.radius + 60);
-  for (const w of [...s.walls, ...s.chains]) if (w.owner === me && !w.gone) [w.from, w.to].forEach((p) => grow(p));
-  let x0 = Math.max(half.x0, box.x0);
-  let x1 = Math.min(half.x1, box.x1);
-  const y0 = Math.max(0, box.y0);
-  const y1 = Math.min(height, box.y1);
-  let extra = (y1 - y0) * aspect - (x1 - x0);
-  if (extra > 0) {
-    const inward = me === 'left' ? Math.min(extra, half.x1 - x1) : Math.min(extra, x0 - half.x0);
-    if (me === 'left') x1 += inward;
-    else x0 -= inward;
-    extra -= inward;
-    if (me === 'left') x0 = Math.max(half.x0, x0 - extra);
-    else x1 = Math.min(half.x1, x1 + extra);
-  }
-  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+  const home = session.state.homes?.[keyboardSide()] ?? { x: width / 4, y: height / 2 };
+  const h = Math.min(640, height);
+  const w = Math.min(h * aspect, width);
+  const x = Math.max(0, Math.min(width - w, home.x - w / 2));
+  const y = Math.max(0, Math.min(height - h, home.y + 90 - h / 2));
+  return { x, y, w, h };
 }
 
 // Detail mode: the next tap picks which holding circle goes in the detail screen.
@@ -805,6 +788,7 @@ function duelHint() {
     return 'Draw at the same time! Waves attack, straight lines block. Chalklings: chain from a green tick, circle, creature, path, erase the chain.';
   }
   const side = keyboardSide();
+  if (watching) return `You're out. Watching the rest of the battle: ${state.players.length - state.out.length} of ${state.players.length} still in.`;
   const where = mode === 'online' ? `You are on the ${side.toUpperCase()} half. ` : '';
   if (state.chalk && state.chalk[side] < CONFIG.chalk.tooLittle) return `${where}You're out of chalk. Your chalklings and waves already out there are all you have left.`;
   if (state.chalk && state.chalk[side] < 500) return `${where}Almost out of chalk: ${Math.round(state.chalk[side])} left. Only short strokes will fit now.`;
@@ -922,6 +906,7 @@ $('btn-paused-menu').addEventListener('click', backToMenu);
 $('btn-save').addEventListener('click', saveStroke);
 $('btn-start').addEventListener('click', startLocalDuel);
 $('btn-rematch').addEventListener('click', rematch);
+$('btn-watch').addEventListener('click', keepWatching);
 $('btn-menu').addEventListener('click', backToMenu);
 $('btn-create').addEventListener('click', () => goOnline({ t: 'create' }));
 $('btn-join').addEventListener('click', () => goOnline({ t: 'join', code: $('room-code').value }));

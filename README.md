@@ -77,10 +77,10 @@ Bots use powers too, from level 3 up (see below).
 
 On the start screen, **Your screen** chooses **Draw on the right** (the default), **Draw on the left**, or **One board** (the old single view).
 
-With a split screen, the screen has a map on one side and two drawing screens on the other:
-- **The map** (a narrow column) shows the whole battle, turned so it runs up and down: your side at the bottom, the enemy at the top. Drag to move around, scroll or pinch to zoom, double-click to reset. It's for watching; you don't draw on it.
-- **Your area** (top of the drawing side, which takes about two thirds of the screen's width) is where you draw: your circle and everything attached to it. Before your circle exists it shows your whole half of the board; after, it frames your circle and its attachments. Both duelists' chalk meters are along its top.
-- **The detail screen** (bottom of your drawing half): press **Detail** (or F), then tap a holding circle in Your area. That circle appears zoomed in, and what you draw there lands inside the real holding circle at its real (small) size. Parts drawn there count ×1.5 detail.
+With a split screen, the screen is split into quarters: the map fills the half away from your drawing side, and your drawing side has two screens, one above the other:
+- **The map** (half the screen) shows the whole battle, turned so your home is at the bottom. Drag to move around, scroll or pinch to zoom, double-click to reset. It's for watching; you don't draw on it.
+- **Your area** (the top quarter of the screen, on your side) is where you draw. It's a fixed view around your home (it doesn't move or zoom while you play), with room above your circle and below it for chains and holding circles. The chalk meters are along its top.
+- **The detail screen** (the bottom quarter of the screen, on your side): press **Detail** (or F), then tap a holding circle in Your area. That circle appears zoomed in, and what you draw there lands inside the real holding circle at its real (small) size. Parts drawn there count ×1.5 detail.
 
 Same-screen play keeps one board, since two players can't each have their own split. This layout is the start of the online version, where the map could hold 2 to 10 players.
 
@@ -99,7 +99,7 @@ Pick **How many bots** on the start screen. With 2 or more it's a free-for-all o
 
 - The board gets bigger with more players, and everyone's home sits in a ring. Your **territory** is the part of the board closer to your home than to anyone else's (faint dotted borders); you can only draw in yours.
 - On the split screen the map is turned so your home is at the bottom. With many players the map is small, so zoom in (scroll or pinch) to look around.
-- When a circle is breached, that player is **out** and everything they drew is wiped off the board. If it's you, the end screen says what place you came (for example "4th of 10").
+- When a circle is breached, that player is **out** and everything they drew is wiped off the board. If it's you, the end screen says what place you came (for example "4th of 10"); press **Keep watching** to watch the rest of the battle, and the end screen comes back with the winner.
 - Chalklings on Attack go for the **nearest** enemy circle still standing. Bots attack the nearest enemy too, and smash walls in the way with curved waves.
 - With 1 bot it's the classic duel, left half against right half.
 
