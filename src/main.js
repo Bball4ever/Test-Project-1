@@ -35,7 +35,7 @@ const hasTouch = navigator.maxTouchPoints > 0;
 // Choices from the start screen.
 // screen: 'right' or 'left' = split screen, drawing on that side; 'classic' = one board.
 // bots: how many bots to play against (1 to 9; 2 or more is a free-for-all).
-const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bots: '1', teamSize: '2', bind: '4', template: '', screen: 'right' };
+const choices = { mode: 'dummy', dummy: 'neat', level: 'duelist', bots: '1', teamSize: '2', who: 'solo', seating: 'side', bind: '4', template: '', screen: 'right' };
 // Where the practice template sits until you draw your own main circle.
 const TEMPLATE_HOME = { center: { x: 380, y: 450 }, radius: 140 };
 
@@ -71,7 +71,12 @@ const human = new HumanController(canvas, {
     if (!session?.state || session.state.winner) return null;
     const humans = Object.keys(session.seats).filter((s) => session.seats[s].kind === 'human');
     if (humans.length === 1) return humans[0];
-    return point.x < CONFIG.engine.world.width / 2 ? 'left' : 'right';
+    // Whose area is it in? If it's a bot's, the nearest person's (the engine
+    // will then say "stay on your side").
+    const { homes } = session.state;
+    const near = (ids) => ids.reduce((a, b) => (dist2(homes[a], point) <= dist2(homes[b], point) ? a : b));
+    const here = near(session.state.players);
+    return humans.includes(here) ? here : near(humans);
   },
   // With the eraser on, a click erases the line under it (after 3 seconds)
   // instead of drawing, and the eraser turns itself off.
@@ -121,18 +126,26 @@ function startLocalDuel() {
   const bind = Number(choices.bind);
   const local = choices.mode === 'local';
   // Against bots there can be up to 9 of them (10 players in all).
-  // In a team game, two teams of teamSize (you and your bot teammates against bots).
+  // In a team game, two teams of teamSize (you and your bot teammates against
+  // bots, or two people on one screen: see teamSeating).
   const teams = choices.mode === 'teams';
   const players = choices.mode === 'bot' ? 1 + Number(choices.bots) : teams ? 2 * Number(choices.teamSize) : 2;
-  const state = createDuel({ players, teams, bindPoints: { left: bind, right: local ? bind : CONFIG.engine.defaultBindPoints } });
-  const seats = { left: makeSeat('human') };
-  for (const id of state.players.slice(1)) seats[id] = local ? makeSeat('human') : opponentSeat(id);
+  const seating = teams ? teamSeating(players) : { humans: local ? ['left', 'right'] : ['left'], angle: 0, edges: {} };
+  const bindPoints = Object.fromEntries(seating.humans.map((id) => [id, bind]));
+  const state = createDuel({ players, teams, bindPoints });
+  const seats = {};
+  for (const id of state.players) seats[id] = seating.humans.includes(id) ? makeSeat('human') : opponentSeat(id);
+  const shared = seating.humans.length > 1;
   session = {
     mode: choices.mode,
     // The split screen is for one player (same-screen play keeps one board).
-    screen: local ? 'classic' : choices.screen,
+    screen: shared ? 'classic' : choices.screen,
     state,
     seats,
+    shared, // two people on one screen
+    humans: seating.humans, // Player 1, Player 2
+    angle: seating.angle, // how the one board is turned
+    edges: seating.edges, // which edge of the screen each person sits at
   };
   beginDuel();
 }
@@ -153,6 +166,35 @@ function beginDuel() {
   $('start').hidden = true;
   $('end').hidden = true;
   updateControls();
+}
+
+// Who sits where in a team game. Just you: you're 'left'. Two people on one
+// screen, either teammates or on opposite teams, sitting side by side (both at
+// the bottom edge) or facing each other (one at the bottom, one at the top,
+// with their buttons turned to face them). The board is turned to suit.
+//   Team 0 is 'left', 'p2', 'p4', … ; team 1 is 'right', 'p3', … ; one row per pair.
+function teamSeating(players) {
+  const solo = { humans: ['left'], angle: 0, edges: {} };
+  if (choices.who === 'solo') return solo;
+  const lastOfTeam0 = `p${players - 2}`;
+  const facing = choices.seating === 'facing';
+  if (choices.who === 'same') {
+    // Side by side: your team along the bottom. Facing: the board as it is, your
+    // team down the left half, one of you at the top row and one at the bottom.
+    return facing
+      ? { humans: ['left', lastOfTeam0], angle: 0, edges: { left: 'top', [lastOfTeam0]: 'bottom' } }
+      : { humans: ['left', 'p2'], angle: -Math.PI / 2, edges: {} };
+  }
+  // Against each other. Side by side: you two are the bottom row, Player 1's
+  // team down the left half. Facing: Player 1's team at the bottom, Player 2's
+  // at the top.
+  return facing
+    ? { humans: ['left', 'right'], angle: -Math.PI / 2, edges: { right: 'top' } }
+    : { humans: [`p${players - 2}`, `p${players - 1}`], angle: 0, edges: {} };
+}
+
+function dist2(a, b) {
+  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
 }
 
 function opponentSeat(id) {
@@ -180,6 +222,8 @@ function showEnd() {
   } else if (mode === 'local') {
     $('end-title').textContent = `Breach! The ${state.winner} player wins.`;
     $('end-stats').textContent = `${secs} seconds. Left threw ${seats.left.waves} Lines of Vigor, right threw ${seats.right.waves}.`;
+  } else if (session.shared && state.teams) {
+    sharedTeamEnd(state, secs);
   } else if (state.teams && !state.winner) {
     // Out, but your team is still in it.
     $('end-title').textContent = state.outReasons.left === 'noCircle' ? 'Too slow! No main circle in time.' : 'You were breached.';
@@ -212,6 +256,50 @@ function showEnd() {
   // Knocked out of a free-for-all that's still going: you can watch the rest.
   $('btn-watch').hidden = !(state.players?.length > 2 && !state.winner);
   $('end').hidden = false;
+}
+
+// The end of a team game with two people on one screen.
+function sharedTeamEnd(state, secs) {
+  const [p1, p2] = humansOf();
+  const same = state.teams[p1] === state.teams[p2];
+  const level = CONFIG.bot.levels[choices.level].name;
+  const size = state.players.length / 2;
+  const waves = `Player 1 threw ${session.seats[p1].waves} Lines of Vigor, Player 2 threw ${session.seats[p2].waves}.`;
+  if (!state.winner) {
+    // Both people are out, but the bots play on.
+    $('end-title').textContent = same ? "You're both out." : 'Both players are out.';
+    $('end-stats').textContent = same ? 'But your bot teammates play on: keep watching to see if they win.' : 'The bots play on: keep watching to see which team wins.';
+    return;
+  }
+  if (same) {
+    $('end-title').textContent = state.winner === `team${state.teams[p1]}` ? 'Your team wins!' : 'Your team was breached.';
+  } else {
+    const winner = state.winner === `team${state.teams[p1]}` ? 'Player 1' : 'Player 2';
+    $('end-title').textContent = `${winner}'s team wins!`;
+  }
+  $('end-stats').textContent = `${secs} seconds, ${size} against ${size} with ${level} bots. ${waves}`;
+}
+
+// "Player 1" and "Player 2" on a shared screen.
+function personName(id) {
+  return `Player ${humansOf().indexOf(id) + 1}`;
+}
+
+// The tag under each main circle in a team game: whose it is, and for people,
+// how much chalk they have left.
+function circleTags(state) {
+  if (!state.teams) return null;
+  const humans = humansOf();
+  const me = humans[0];
+  const tags = {};
+  for (const id of state.players) {
+    const person = humans.includes(id);
+    let text;
+    if (session.shared) text = person ? personName(id) : 'Bot';
+    else text = id === me ? 'You' : state.teams[id] === state.teams[me] ? 'Teammate' : 'Enemy';
+    tags[id] = { text, chalk: person ? state.chalk[id] : null, flip: session.edges?.[id] === 'top' };
+  }
+  return tags;
 }
 
 function keepWatching() {
@@ -362,7 +450,7 @@ function frame(now) {
     sendLiveStroke(now);
     // The duel is over for you when someone has won, or (with several bots)
     // when you've been breached.
-    const over = state.winner || (!watching && state.out?.includes(keyboardSide()));
+    const over = state.winner || (!watching && humansOf().every((id) => state.out?.includes(id)));
     if (over && !endShown && now - breachAt > 1400) showEnd();
   }
 
@@ -384,7 +472,7 @@ function frame(now) {
       if (view.empty) continue;
       board.beginView(view);
       // The chalk meters are shown once: on the map (or the one board).
-      renderer.draw(state, live, now, template, { meters: view.name === 'full', angle: view.angle ?? 0, me: keyboardSide() });
+      renderer.draw(state, live, now, template, { meters: view.name === 'full', angle: view.angle ?? 0, tags: circleTags(state) });
       if (target && view.name !== 'detail') markDetailCircle(board.ctx, target);
       drawCircleGuides(board.ctx, state);
       if (debug) drawDuelDebug(board.ctx, state);
@@ -396,7 +484,7 @@ function frame(now) {
       board.endView();
     }
   }
-  if (board.views) drawPanelFrames(board.ctx, board.views, board.dpr, session?.state);
+  if (isSplit()) drawPanelFrames(board.ctx, board.views, board.dpr, session?.state);
   updateHud();
   requestAnimationFrame(frame);
 }
@@ -477,9 +565,15 @@ function layoutViews() {
   document.body.dataset.split = split ? session.screen : '';
   if (!split) {
     delete document.body.dataset.split;
-    board.views = null;
+    // One board, turned to suit where the players sit (see teamSeating).
+    const angle = session?.state ? (session.angle ?? 0) : 0;
+    board.views = angle
+      ? [makeView('full', { x: 0, y: 0, w: canvas.clientWidth, h: canvas.clientHeight }, { x: 0, y: 0, w: board.world.width, h: board.world.height }, { angle, pad: 4 })]
+      : null;
+    placeControls();
     return;
   }
+  placeControls();
   const W = canvas.clientWidth;
   const H = canvas.clientHeight;
   const { width, height } = board.world;
@@ -750,7 +844,40 @@ function keyboardSide() {
   return Object.keys(session.seats).find((s) => session.seats[s].kind === 'human');
 }
 
+// The people playing on this screen (Player 1 first).
+function humansOf() {
+  if (!session) return [];
+  if (session.net) return [session.mySide];
+  return session.humans ?? Object.keys(session.seats).filter((s) => session.seats[s].kind === 'human');
+}
+
+// Each person gets a bar of buttons: the first box for Player 1, the second
+// for Player 2. Each sits at the person's edge of the screen, on their side
+// (turned to face them if they sit at the top).
+function placeControls() {
+  const boxes = document.querySelectorAll('.side-controls');
+  const humans = session?.state ? humansOf() : [];
+  const view = board.views?.find((v) => v.name === 'full') ?? board.fullView();
+  boxes.forEach((box, i) => {
+    const id = humans[i] ?? '';
+    set(box, 'side', id);
+    let x = id === 'right' ? 'right' : 'left';
+    if (humans.length > 1 && session.state.homes?.[id]) {
+      const h = session.state.homes[id];
+      x = view.ox + view.a * h.x + view.c * h.y < view.rect.w / 2 ? 'left' : 'right';
+    }
+    set(box, 'x', x);
+    set(box, 'edge', session?.edges?.[id] ?? 'bottom');
+  });
+}
+
+// (Only touch the page when something changed: this runs every frame.)
+function set(el, key, value) {
+  if (el.dataset[key] !== value) el.dataset[key] = value;
+}
+
 function updateControls() {
+  placeControls();
   for (const box of document.querySelectorAll('.side-controls')) {
     const side = box.dataset.side;
     const seat = session?.state ? session.seats[side] : null;
@@ -776,7 +903,7 @@ function updateControls() {
 // The faint defense to trace, placed around your real circle once you've drawn it.
 function practiceTemplate() {
   const defense = choices.template && findDefense(choices.template);
-  if (!defense?.parts || !['dummy', 'bot', 'teams'].includes(session.mode)) return null;
+  if (!defense?.parts || !['dummy', 'bot', 'teams'].includes(session.mode) || session.shared) return null;
   const { state } = session;
   const main = mainWard(state, 'left');
   const anchor = main ? { center: main.center, radius: main.radius } : TEMPLATE_HOME;
@@ -799,6 +926,15 @@ function updateHud() {
 
 function duelHint() {
   const { state, seats, mode } = session;
+  if (session.shared && state.teams) {
+    const humans = humansOf();
+    const waiting = humans.filter((s) => !mainWard(state, s) && !state.out.includes(s)).map((s) => personName(s));
+    if (waiting.length) return `Both players: quick, draw your main circle in your own area, at least as big as the dashed ring (${waiting.join(' and ')} still to go).`;
+    const same = state.teams[humans[0]] === state.teams[humans[1]];
+    return same
+      ? 'You two are a team: the cool colours. Waves pass through your teammates, but walls stop everyone. Last team standing wins.'
+      : 'Player 1 is cool colours, Player 2 warm, each with bot teammates. Last team standing wins.';
+  }
   if (mode === 'local') {
     const waiting = SIDES.filter((s) => !mainWard(state, s));
     if (waiting.length) return `Both players: draw your main circle on your own half (${waiting.join(' and ')} still to go).`;
@@ -884,7 +1020,7 @@ function updateCountdown() {
     return;
   }
   const side = keyboardSide();
-  const done = session.mode === 'local' ? Object.keys(session.seats).every((s) => mainWard(state, s)) : !!mainWard(state, side);
+  const done = session.shared ? humansOf().every((s) => mainWard(state, s)) : !!mainWard(state, side);
   el.hidden = false;
   el.classList.toggle('done', done);
   el.querySelector('b').textContent = String(Math.ceil(left / 1000));
@@ -897,7 +1033,7 @@ function updateCountdown() {
   const homeX = main && home ? main.ox + home.x * main.scale : 0;
   const at = main
     ? { x: main.rect.x + main.rect.w * (homeX < main.rect.x + main.rect.w / 2 ? 0.78 : 0.22), y: main.rect.y + main.rect.h * 0.5 }
-    : { x: rect.width * (session.mode === 'local' ? 0.5 : side === 'right' ? 0.75 : 0.25), y: rect.height * 0.14 };
+    : { x: rect.width * (session.shared ? 0.5 : side === 'right' ? 0.75 : 0.25), y: rect.height * 0.14 };
   el.style.left = `${rect.left + at.x}px`;
   el.style.top = `${rect.top + at.y}px`;
 }
@@ -987,14 +1123,15 @@ $('btn-try-anyway').addEventListener('click', () => {
   tryWithoutTouch = true;
   showChoiceRows();
 });
+// (Which person a box belongs to is set at the start of each duel: placeControls.)
 for (const box of document.querySelectorAll('.side-controls')) {
-  const side = box.dataset.side;
-  box.querySelector('[data-act="eraser"]').addEventListener('click', () => toggleEraser(side));
-  box.querySelector('[data-act="making"]').addEventListener('click', () => toggleMaking(side));
-  box.querySelector('[data-act="detail"]').addEventListener('click', () => toggleDetailPick(side));
-  for (const b of box.querySelectorAll('[data-control]')) b.addEventListener('click', () => pickControl(side, b.dataset.control));
-  box.querySelector('[data-act="attack"]').addEventListener('click', () => giveOrder(side, 'attack'));
-  box.querySelector('[data-act="guard"]').addEventListener('click', () => giveOrder(side, 'guard'));
+  const side = () => box.dataset.side;
+  box.querySelector('[data-act="eraser"]').addEventListener('click', () => toggleEraser(side()));
+  box.querySelector('[data-act="making"]').addEventListener('click', () => toggleMaking(side()));
+  box.querySelector('[data-act="detail"]').addEventListener('click', () => toggleDetailPick(side()));
+  for (const b of box.querySelectorAll('[data-control]')) b.addEventListener('click', () => pickControl(side(), b.dataset.control));
+  box.querySelector('[data-act="attack"]').addEventListener('click', () => giveOrder(side(), 'attack'));
+  box.querySelector('[data-act="guard"]').addEventListener('click', () => giveOrder(side(), 'guard'));
 }
 
 // Start-screen choices: one button per option, grouped by data-group.
@@ -1020,9 +1157,14 @@ for (const d of DEFENSES) {
 
 // Rows like "Bot level" only show for the mode they belong to.
 function showChoiceRows() {
-  for (const row of document.querySelectorAll('[data-show]')) row.hidden = !row.dataset.show.split(' ').includes(choices.mode);
+  // In a team game, the Seating rows are for two people, and the Your screen
+  // rows (split screen) for one.
+  const pair = choices.mode === 'teams' && choices.who !== 'solo';
+  for (const row of document.querySelectorAll('[data-show]')) {
+    row.hidden = !row.dataset.show.split(' ').includes(choices.mode) || ('pair' in row.dataset && !pair) || ('solo' in row.dataset && pair);
+  }
   // Same-screen play needs a touchscreen (two people drawing at once).
-  const blocked = choices.mode === 'local' && !hasTouch && !tryWithoutTouch;
+  const blocked = (choices.mode === 'local' || pair) && !hasTouch && !tryWithoutTouch;
   $('touch-note').hidden = !blocked;
   $('btn-start').disabled = blocked;
 }
@@ -1042,7 +1184,8 @@ for (const pick of document.querySelectorAll('.pick')) {
 if (window.RITHMATIST_STATIC) document.querySelector('.pick[data-group="mode"][data-value="online"]')?.remove();
 
 // For automated browser tests: where each panel is right now (read-only).
-window.rithmatistViews = () => board.views;
+window.rithmatistViews = () => board.views ?? [board.fullView()];
+window.rithmatistHomes = () => session?.state?.homes ?? null;
 
 showChoiceRows();
 updateControls();

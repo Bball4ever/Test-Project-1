@@ -99,6 +99,19 @@ Pick **Teams** and how many **Players per team**. It's you and your bot teammate
 - If your circle breaks, you're **out**, but your team plays on: press **Keep watching**. The **last team standing wins.**
 - Under every main circle is a tag: **You**, **Teammate** (cool colours) or **Enemy** (warm colours). On the split screen, the map is turned so your team is at the bottom and theirs at the top.
 
+### Two people on one screen
+
+Under **Who's playing**, pick **Two of us, same team** (you two and bot teammates against bots) or **Two of us, against each other** (each of you with bot teammates). Like Same screen, this needs a touchscreen so you can both draw at once.
+
+- **Seating:** **Side by side** means you both sit at the bottom edge. **Facing each other** means one of you sits at the top edge: that player's buttons and name tag are turned round to face them. The board is turned to suit:
+  - same team, side by side: your team along the bottom, the enemy at the top
+  - same team, facing: your team down the left half, one of you in the top row and one in the bottom row
+  - against each other, side by side: you two are the bottom row, Player 1 on the left
+  - against each other, facing: Player 1's team at the bottom, Player 2's at the top
+- Each stroke belongs to whoever's area it starts in. Each player has their own buttons (Chalkling, Eraser, Attack / Guard); the keyboard controls Player 1.
+- Name tags say **Player 1**, **Player 2** or **Bot**, in team colours, with each player's chalk underneath.
+- If you're both out but your bot teammates are still in, **Keep watching** to see who wins.
+
 ## Bot levels
 
 | # | Level | What's new at this level |

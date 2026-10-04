@@ -84,12 +84,20 @@ kbd {
   gap: 8px;
 }
 
-.side-controls[data-side='left'] {
+.side-controls[data-x='left'] {
   left: 16px;
 }
 
-.side-controls[data-side='right'] {
+.side-controls[data-x='right'] {
   right: 16px;
+}
+
+/* Someone sitting at the top edge (facing the other player): their buttons
+   are at the top, turned round to face them. */
+.side-controls[data-edge='top'] {
+  bottom: auto;
+  top: 60px;
+  transform: rotate(180deg);
 }
 
 .side-controls .orders {
@@ -117,13 +125,25 @@ kbd {
   max-width: calc(50vw - 32px);
 }
 
-.side-controls[data-side='left'] .chalkling-picker {
+.side-controls[data-x='left'] .chalkling-picker {
   left: 16px;
 }
 
-.side-controls[data-side='right'] .chalkling-picker {
+.side-controls[data-x='right'] .chalkling-picker {
   right: 16px;
   justify-content: flex-end;
+}
+
+/* Turned round, the Command buttons go just past the other buttons (toward
+   the middle of the screen), the right way up for that player. */
+.side-controls[data-edge='top'] .chalkling-picker {
+  position: absolute;
+  top: auto;
+  left: 0;
+  right: auto;
+  bottom: calc(100% + 8px);
+  max-width: none;
+  white-space: nowrap;
 }
 
 .side-controls .chalkling-picker[hidden] {
@@ -328,8 +348,8 @@ body[data-split] .side-controls {
 
 body[data-split='left'] .hud,
 body[data-split='left'] .buttons,
-body[data-split='left'] .side-controls[data-side='left'],
-body[data-split='left'] .side-controls[data-side='left'] .chalkling-picker {
+body[data-split='left'] .side-controls[data-x='left'],
+body[data-split='left'] .side-controls[data-x='left'] .chalkling-picker {
   left: calc(100vw - var(--map-w, 50vw) + 12px);
 }
 

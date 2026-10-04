@@ -20,7 +20,7 @@
       <button id="btn-save" title="Copy your last stroke so it can become a test">Save stroke <kbd>S</kbd></button>
     </nav>
 
-    <div class="side-controls" data-side="left" hidden>
+    <div class="side-controls" data-x="left" hidden>
       <div class="chalkling-picker" hidden>
         <span>Command:</span>
         <button data-control="remote" title="Follows the Attack / Guard buttons">Remote</button>
@@ -35,7 +35,7 @@
         <button data-act="guard" title="Chalklings that finished their path defend your circle">Guard <kbd>G</kbd></button>
       </span>
     </div>
-    <div class="side-controls" data-side="right" hidden>
+    <div class="side-controls" data-x="right" hidden>
       <div class="chalkling-picker" hidden>
         <span>Command:</span>
         <button data-control="remote" title="Follows the Attack / Guard buttons">Remote</button>
@@ -95,8 +95,24 @@
           <button class="pick" data-group="teamSize" data-value="4">4</button>
           <button class="pick" data-group="teamSize" data-value="5">5</button>
         </div>
+        <div class="choice wrap" data-show="teams">
+          <span>Who's playing:</span>
+          <button class="pick selected" data-group="who" data-value="solo">Just me</button>
+          <button class="pick" data-group="who" data-value="same">Two of us, same team</button>
+          <button class="pick" data-group="who" data-value="versus">Two of us, against each other</button>
+        </div>
+        <div class="choice wrap" data-show="teams" data-pair>
+          <span>Seating:</span>
+          <button class="pick selected" data-group="seating" data-value="side">Side by side</button>
+          <button class="pick" data-group="seating" data-value="facing">Facing each other</button>
+        </div>
+        <p class="note" data-show="teams" data-pair>
+          Two people on one touchscreen, the rest bots. Side by side: you both sit at the bottom edge. Facing each
+          other: one of you sits at the top edge, and that player's buttons and name are turned round to face them.
+          Each stroke belongs to whoever's area it starts in.
+        </p>
         <p class="note" data-show="teams">
-          You and your bot teammates (cool colours) against a team of bots (warm colours).
+          Your team (cool colours) against the other team (warm colours); everyone else is a bot.
           Teammates' waves pass through each other's circles and chalklings, but walls stop everyone's. If your circle
           breaks you're out, but your team plays on: the last team standing wins.
         </p>
@@ -105,13 +121,13 @@
           <button class="pick selected" data-group="dummy" data-value="neat">Neat</button>
           <button class="pick" data-group="dummy" data-value="sloppy">Sloppy</button>
         </div>
-        <div class="choice wrap" data-show="dummy bot teams">
+        <div class="choice wrap" data-show="dummy bot teams" data-solo>
           <span>Your screen:</span>
           <button class="pick selected" data-group="screen" data-value="right">Draw on the right</button>
           <button class="pick" data-group="screen" data-value="left">Draw on the left</button>
           <button class="pick" data-group="screen" data-value="classic">One board</button>
         </div>
-        <p class="note" data-show="dummy bot teams">
+        <p class="note" data-show="dummy bot teams" data-solo>
           Split screen: one half is the map (drag, scroll or pinch to look around); the other half is your drawing
           area on top and the <b>detail screen</b> below, for drawing chalklings big.
         </p>

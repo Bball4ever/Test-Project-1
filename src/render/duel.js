@@ -118,8 +118,8 @@ export class DuelRenderer {
   // drafts: chalklings still being drawn in Making mode (lists of strokes).
   // meters: false to leave out the chalk meters (shown once, in the map).
   // angle: how far the view is turned (see makeView), so text can stay upright.
-  // me: whose screen this is (in a team game, circles are tagged You, Teammate or Enemy).
-  draw(state, liveStrokes, now, template = null, { meters = true, angle = 0, me = 'left' } = {}) {
+  // tags: in a team game, what to write under each main circle ({ text, chalk }).
+  draw(state, liveStrokes, now, template = null, { meters = true, angle = 0, tags = null } = {}) {
     teams = state.teams ?? null;
     const ctx = this.board.ctx;
     this.angle = angle;
@@ -160,7 +160,9 @@ export class DuelRenderer {
       if (ward.main) {
         drawBindPoints(ctx, ward);
         upright(ctx, ward.center, this.angle, () => drawDuelist(ctx, ward.center));
-        if (teams) upright(ctx, ward.center, this.angle, () => drawTeamTag(ctx, ward, me));
+        // (Turned round for someone sitting at the top edge, so they can read theirs.)
+        const tag = tags?.[ward.owner];
+        if (tag) upright(ctx, ward.center, this.angle + (tag.flip ? Math.PI : 0), () => drawTeamTag(ctx, ward, tag));
       }
       if (ward.creature?.length) {
         const pic = this.cached(`cr${ward.id}:${ward.creature.length}`, null, ward.id * 31, R.makingColor, ward.creature);
@@ -587,14 +589,19 @@ function topOf(points) {
 // Draw something (text, a label box) the right way up on a turned view,
 // by turning it back around the point `at`.
 // Under each main circle in a team game: whose it is, in their colour.
-function drawTeamTag(ctx, ward, me) {
-  const text = ward.owner === me ? 'You' : teams[ward.owner] === teams[me] ? 'Teammate' : 'Enemy';
+function drawTeamTag(ctx, ward, tag) {
   ctx.save();
   ctx.font = '600 26px system-ui, sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = `rgba(${teamColor(ward.owner)}, 0.9)`;
-  ctx.fillText(text, ward.center.x, ward.center.y + ward.radius + 14);
+  const y = ward.center.y + ward.radius + 14;
+  ctx.fillText(tag.text, ward.center.x, y);
+  if (tag.chalk != null) {
+    ctx.font = '600 20px system-ui, sans-serif';
+    ctx.fillStyle = `rgba(${R.chalkColor}, 0.75)`;
+    ctx.fillText(`Chalk ${Math.round(Math.max(0, tag.chalk)).toLocaleString()}`, ward.center.x, y + 32);
+  }
   ctx.restore();
 }
 
