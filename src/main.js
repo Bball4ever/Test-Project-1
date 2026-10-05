@@ -869,6 +869,9 @@ function placeControls() {
     set(box, 'x', x);
     set(box, 'edge', session?.edges?.[id] ?? 'bottom');
   });
+  // Someone sits at the top edge: the top of the screen is theirs (see style.css).
+  const facing = humans.some((id) => session?.edges?.[id] === 'top');
+  if ('facing' in document.body.dataset !== facing) document.body.toggleAttribute('data-facing', facing);
 }
 
 // (Only touch the page when something changed: this runs every frame.)
@@ -1033,7 +1036,7 @@ function updateCountdown() {
   const homeX = main && home ? main.ox + home.x * main.scale : 0;
   const at = main
     ? { x: main.rect.x + main.rect.w * (homeX < main.rect.x + main.rect.w / 2 ? 0.78 : 0.22), y: main.rect.y + main.rect.h * 0.5 }
-    : { x: rect.width * (session.shared ? 0.5 : side === 'right' ? 0.75 : 0.25), y: rect.height * 0.14 };
+    : { x: rect.width * (session.shared ? 0.5 : side === 'right' ? 0.75 : 0.25), y: rect.height * ('facing' in document.body.dataset ? 0.5 : 0.14) };
   el.style.left = `${rect.left + at.x}px`;
   el.style.top = `${rect.top + at.y}px`;
 }

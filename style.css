@@ -96,7 +96,7 @@ kbd {
    are at the top, turned round to face them. */
 .side-controls[data-edge='top'] {
   bottom: auto;
-  top: 60px;
+  top: 12px;
   transform: rotate(180deg);
 }
 
@@ -134,8 +134,10 @@ kbd {
   justify-content: flex-end;
 }
 
-/* Turned round, the Command buttons go just past the other buttons (toward
-   the middle of the screen), the right way up for that player. */
+/* With someone at the top edge, the top of the screen is theirs, so everyone's
+   Command buttons go just past their own buttons, toward the middle of the
+   screen (turned round with the rest for the player at the top). */
+body[data-facing] .side-controls .chalkling-picker,
 .side-controls[data-edge='top'] .chalkling-picker {
   position: absolute;
   top: auto;
@@ -383,4 +385,19 @@ body[data-split='left'] .side-controls[data-x='left'] .chalkling-picker {
 
 #countdown.done b {
   color: rgb(150, 220, 170);
+}
+
+/* With someone at the top edge, the hint (for the player at the bottom) moves
+   to the bottom right, out of the top player's way. */
+body[data-facing] .hud {
+  top: auto;
+  left: auto;
+  bottom: 12px;
+  right: 16px;
+  max-width: min(420px, 40vw);
+  text-align: right;
+}
+
+body[data-facing] .hud h1 {
+  display: none;
 }
