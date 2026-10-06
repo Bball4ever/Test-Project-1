@@ -13,6 +13,9 @@ import { makeSnapshot } from '../src/net/snapshot.js';
 const CODE_LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ'; // no I or O (they look like 1 and 0)
 const SNAPSHOT_EVERY = 2; // engine steps per snapshot (60 / 2 = 30 per second)
 const ACTIONS_PER_SECOND = 25; // room for drawing plus the eraser's 10 updates a second; stops floods
+const LIVE_PER_SECOND = 20; // "what I'm drawing right now": the browser sends 10 a second
+const LOBBY_PER_SECOND = 2; // creating and joining rooms
+const MAX_ROOMS = 500; // on a public server, a cap so nobody can fill its memory with empty rooms
 const MAX_LIVE_POINTS = 2000;
 
 export class Rooms {
@@ -25,16 +28,19 @@ export class Rooms {
   // conn: { send(message) } plus whatever the caller likes.
   handle(conn, msg) {
     if (!msg || typeof msg !== 'object') return;
-    if (msg.t === 'create') return this.create(conn, msg);
-    if (msg.t === 'join') return this.join(conn, msg);
+    if (msg.t === 'create' || msg.t === 'join') {
+      if (!this.allow(conn, 'lobby', LOBBY_PER_SECOND)) return conn.send({ t: 'error', message: 'Too fast: wait a moment and try again.' });
+      return msg.t === 'create' ? this.create(conn, msg) : this.join(conn, msg);
+    }
     const room = conn.room;
     if (!room) return;
     if (msg.t === 'action') return this.action(room, conn, msg.action);
-    if (msg.t === 'live') return this.live(room, conn, msg);
+    if (msg.t === 'live') return this.allow(conn, 'live', LIVE_PER_SECOND) && this.live(room, conn, msg);
     if (msg.t === 'rematch') return this.rematch(room, conn);
   }
 
   create(conn, msg) {
+    if (this.rooms.size >= MAX_ROOMS) return conn.send({ t: 'error', message: 'The server is full right now. Try again in a few minutes.' });
     this.leave(conn);
     let code;
     do {
@@ -62,8 +68,6 @@ export class Rooms {
     room.bind[side] = CONFIG.engine.bindPointChoices.includes(Number(bind)) ? Number(bind) : CONFIG.engine.defaultBindPoints;
     conn.room = room;
     conn.side = side;
-    conn.tokens = ACTIONS_PER_SECOND;
-    conn.tokensAt = this.now();
   }
 
   start(room) {
@@ -78,7 +82,7 @@ export class Rooms {
   }
 
   action(room, conn, raw) {
-    if (!room.state || !this.allow(conn)) return;
+    if (!room.state || !this.allow(conn, 'action', ACTIONS_PER_SECOND)) return;
     const action = sanitizeAction(raw);
     if (!action) return;
     const { result } = applyAction(room.state, conn.side, action);
@@ -117,13 +121,16 @@ export class Rooms {
     this.rooms.delete(room.code);
   }
 
-  // A simple "token bucket": each player gets ACTIONS_PER_SECOND actions a second.
-  allow(conn) {
+  // A simple "token bucket": each connection gets `perSecond` messages of each
+  // kind a second (with a burst of up to that many); extra ones are dropped.
+  allow(conn, kind, perSecond) {
     const now = this.now();
-    conn.tokens = Math.min(ACTIONS_PER_SECOND, conn.tokens + ((now - conn.tokensAt) / 1000) * ACTIONS_PER_SECOND);
-    conn.tokensAt = now;
-    if (conn.tokens < 1) return false;
-    conn.tokens -= 1;
+    conn.buckets ??= {};
+    const b = (conn.buckets[kind] ??= { tokens: perSecond, at: now });
+    b.tokens = Math.min(perSecond, b.tokens + ((now - b.at) / 1000) * perSecond);
+    b.at = now;
+    if (b.tokens < 1) return false;
+    b.tokens -= 1;
     return true;
   }
 

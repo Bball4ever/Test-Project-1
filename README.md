@@ -2,6 +2,8 @@
 
 A browser chalk-dueling game based on Brandon Sanderson's *The Rithmatist*. Fan project for learning, not for sale. `PLAN.md` has the full plan.
 
+> **Fan project disclaimer:** Rithmatist Duel is an unofficial, non-commercial fan project based on *The Rithmatist* by Brandon Sanderson. It is not affiliated with, endorsed by, or sponsored by Brandon Sanderson, Dragonsteel Entertainment, or the book's publishers. *The Rithmatist* and its world, names and terms (Lines of Warding, Forbiddance, Vigor and Making, chalklings, and so on) belong to their owners. This project's own code is released under the MIT License (see `LICENSE`); that license does not cover anything from the book. The game is free to play.
+
 Draw chalk lines on a board in real time. The game recognizes what you drew, scores how well you drew it, and brings it to life. Breach the other duelist's main circle to win.
 
 ## Running it
@@ -12,6 +14,29 @@ You need Node.js 22 or newer.
 npm install     # once: gets the one dependency (ws, for online play)
 npm start       # then open http://localhost:8000 in Chrome
 ```
+
+Run this way, the server only listens to your own computer (127.0.0.1): two browser tabs on it can play each other online, but nobody else can connect. `PORT=9000 npm start` uses a different port.
+
+## Hosting on Render
+
+The game server is a Node.js web service with WebSocket connections, so it needs a host that keeps a server running (Vercel-style hosts that only run short functions won't work). [Render](https://render.com) runs it as is.
+
+1. Put the repository on GitHub (or GitLab or Bitbucket): Render deploys from a Git repository.
+2. In the Render Dashboard, choose **New > Blueprint** and pick the repository. Render reads `render.yaml` from the root of the repository:
+   - build: `npm install`
+   - start: `npm start`
+   - health check: `/healthz` (the server answers `ok`)
+   - `HOST=0.0.0.0`, so the server listens on every network address. Render sets `PORT` itself, and the server reads it. (The server also listens on every address whenever Render's own `RENDER` variable is set.)
+3. When it's live, open the `https://….onrender.com` address it gives you. The browser connects to the game server with secure WebSockets (`wss://`) on the same address; nothing to configure.
+
+**The free plan:** a free web service goes to sleep after 15 minutes without visitors, and the next visit wakes it in about a minute. Any rooms in progress when it sleeps or redeploys are lost (rooms live in the server's memory). A paid plan stays awake.
+
+**Built in for a public server:**
+- each connection may only send so many messages a second (drawing, live strokes, and creating or joining rooms)
+- at most 500 rooms at a time
+- a heartbeat every 30 seconds cuts off dead connections and frees their rooms
+
+**Online play is 2 players only** (one room = one duel). Free-for-all and teams are for bots and same-screen play.
 
 ## Playing without installing anything
 
@@ -131,7 +156,7 @@ Bots throw curved waves at your circle and spiky ones at your chalklings, and ke
 
 Each level beats the one below it in at least 7 of 12 test duels. All the settings are in `src/config.js` under `bot.levels`.
 - **Same screen:** two people on one touchscreen, each drawing on their own half at the same time.
-- **Online:** one player presses **Create room** and shares the 4-letter code; the other enters it and presses **Join**. For now this works between tabs on the computer running `npm start`.
+- **Online:** one player presses **Create room** and shares the 4-letter code; the other enters it and presses **Join**. Run locally, this works between tabs on the computer running `npm start`; hosted (see Hosting on Render), between any two devices.
 
 ## Controls
 
@@ -189,4 +214,8 @@ The big rule: **the duel rules don't know who is holding the chalk.** A person, 
 
 - **Named defenses:** Matson, Ballintain and Easton are listed but disabled until their real layouts come from the book. Only a clearly labeled placeholder can be traced. Add layouts in `src/data/defenses.js`.
 - **Lore checks:** see section 8 of `PLAN.md`.
-- **Playing online between different houses:** this needs the server put on the internet, which is a separate decision (it may need an account or cost money).
+- **Playing online between different houses:** the repository is ready for Render (see Hosting on Render); it still has to be deployed.
+
+## License
+
+The code is under the MIT License: see `LICENSE`. It covers this project's own code only, not *The Rithmatist* (see the disclaimer at the top).

@@ -121,6 +121,52 @@ test('the server only serves game files', async () => {
     assert.equal(await get('/server/rooms.js'), 404);
     assert.equal(await get('/package.json'), 404);
     assert.equal(await get('/../../etc/passwd'), 404);
+    // A broken web address gets "bad request" (it used to crash the server).
+    assert.equal(await get('/%E0%A4%A'), 400);
+    assert.equal(await get('/'), 200, 'still up afterwards');
+    // The host's health check.
+    const health = await fetch(`http://127.0.0.1:${server.port}/healthz`);
+    assert.equal(health.status, 200);
+    assert.equal(await health.text(), 'ok');
+  } finally {
+    await server.close();
+  }
+});
+
+test('a public server: an oversized message closes that connection, not the server', async () => {
+  const server = await startServer({ port: 0 });
+  try {
+    const p = await player(server.port);
+    p.ws.on('error', () => {});
+    const closed = new Promise((done) => p.ws.on('close', done));
+    p.ws.send('x'.repeat(600 * 1024));
+    await closed;
+    const q = await player(server.port);
+    q.send({ t: 'create' });
+    assert.equal((await q.waitFor(() => q.got('joined'))).side, 'left', 'the server carries on');
+    q.ws.close();
+  } finally {
+    await server.close();
+  }
+});
+
+test('a public server: creating rooms too fast is refused, and rooms are capped', async () => {
+  const server = await startServer({ port: 0 });
+  try {
+    const p = await player(server.port);
+    for (let i = 0; i < 6; i++) p.send({ t: 'create' });
+    await p.waitFor(() => p.messages.some((m) => m.t === 'error'));
+    assert.ok(p.messages.filter((m) => m.t === 'joined').length <= 2, 'only a couple get through at once');
+    assert.match(p.got('error').message, /Too fast/);
+    assert.equal(server.rooms.rooms.size, 1, 'and each new room replaced the last, so only one exists');
+
+    // When the server already holds the most rooms it allows, a new one is refused.
+    for (let i = 0; i < 500; i++) server.rooms.rooms.set(`T${i}`, { code: `T${i}`, conns: {}, state: null });
+    const q = await player(server.port);
+    q.send({ t: 'create' });
+    assert.match((await q.waitFor(() => q.got('error'))).message, /server is full/);
+    p.ws.close();
+    q.ws.close();
   } finally {
     await server.close();
   }

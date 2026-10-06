@@ -254,6 +254,12 @@ body[data-facing] .side-controls .chalkling-picker,
   opacity: 0.85;
 }
 
+.note.fan-note {
+  font-size: 12px !important;
+  opacity: 0.6;
+  margin-top: -4px;
+}
+
 .note.warn {
   color: rgb(240, 180, 160);
 }

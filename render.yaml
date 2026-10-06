@@ -1,0 +1,17 @@
+# Render Blueprint: how Render builds and runs the game server.
+# In the Render Dashboard: New > Blueprint, then pick this repository.
+# (Render reads this file from the root of the repository.)
+services:
+  - type: web
+    name: rithmatist-chalk-duel
+    runtime: node
+    plan: free # free instances sleep after 15 minutes with no visitors; the next visit wakes it (about a minute)
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeploy: true # redeploy whenever the branch Render watches gets new commits
+    envVars:
+      # Listen on every network address, so players can reach the server.
+      # (Render sets PORT itself; the server reads it.)
+      - key: HOST
+        value: 0.0.0.0
