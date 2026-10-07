@@ -25,6 +25,7 @@ import { drawDuelDebug, debugPanelText } from './render/debug.js';
 import { DEFENSES, findDefense, layoutDefense, tracedParts } from './data/defenses.js';
 import { OnlineClient } from './net/client.js';
 import { readSnapshot } from './net/snapshot.js';
+import { Tutorial, wavePoints } from './tutorial.js';
 
 const $ = (id) => document.getElementById(id);
 const canvas = $('board');
@@ -123,6 +124,7 @@ function act(side, action, pointerType = 'mouse') {
 
 function startLocalDuel() {
   closeNet();
+  endTutorialUi();
   const bind = Number(choices.bind);
   const local = choices.mode === 'local';
   // Against bots there can be up to 9 of them (10 players in all).
@@ -318,6 +320,7 @@ function backToMenu() {
   setPaused(false);
   closeNet();
   session = null;
+  endTutorialUi();
   board.setWorld(CONFIG.engine.world);
   $('end').hidden = true;
   $('start').hidden = false;
@@ -330,6 +333,159 @@ function rematch() {
     session.net.send({ t: 'rematch' });
     $('end-stats').textContent = 'Waiting for your opponent to press Rematch too...';
   } else startLocalDuel();
+}
+
+// --- The tutorial ---------------------------------------------------------------------
+// A practice board against the dummy, with a step card (see tutorial.js). No
+// countdown and endless chalk, so nobody is knocked out while learning.
+
+const TUTORIAL_DONE_KEY = 'rithmatist.tutorialDone';
+
+function startTutorial() {
+  closeNet();
+  const state = createDuel({ circleDeadlineMs: Infinity, chalk: Infinity });
+  session = {
+    mode: 'tutorial',
+    screen: choices.screen,
+    state,
+    seats: { left: makeSeat('human'), right: makeSeat('dummy', new DummyController({ owner: 'right', style: 'neat' })) },
+    tutorial: new Tutorial(),
+  };
+  detailTarget = null;
+  beginDuel();
+  document.body.setAttribute('data-tutorial', '');
+  $('tutorial-card').hidden = false;
+  session.tutorial.start(tutorialApi());
+  showTutorialCard();
+}
+
+// What the tutorial's steps can see and do (see the top of tutorial.js).
+function tutorialApi() {
+  const { state } = session;
+  const seat = session.seats.left;
+  return {
+    state,
+    seat,
+    split: isSplit(),
+    detailShown: !!detailWard(),
+    now: state.timeMs, // game time, so a paused tutorial waits too
+    act: (action) => applyAction(state, 'left', action),
+    dummyAct: (action) => applyAction(state, 'right', action),
+    setMaking: (on) => {
+      if (seat.making !== on) toggleMaking('left');
+    },
+    pickDetail: (id) => {
+      if (id == null || !isSplit()) return;
+      detailTarget = id;
+      seat.detailPick = false;
+      updateControls();
+    },
+    eraseAt: (at) => applyAction(state, 'left', { type: 'erase', at }),
+  };
+}
+
+function updateTutorial() {
+  const tutorial = session.tutorial;
+  tutorial.update(tutorialApi());
+  if (tutorial.finished && !endShown) finishTutorial();
+  else showTutorialCard();
+}
+
+let shownCard = '';
+function showTutorialCard() {
+  const card = session.tutorial.card(tutorialApi());
+  if (!card) return;
+  const key = JSON.stringify(card);
+  if (key === shownCard) return;
+  shownCard = key;
+  $('tc-step').textContent = `Tutorial · Step ${card.number} of ${card.of}`;
+  $('tc-title').textContent = card.title;
+  $('tc-text').innerHTML = card.text; // (the steps' own text, with <b> for emphasis)
+  $('tc-feedback').textContent = card.feedback;
+}
+
+function finishTutorial() {
+  endShown = true;
+  try {
+    localStorage.setItem(TUTORIAL_DONE_KEY, '1');
+  } catch {}
+  markTutorialButton();
+  $('tutorial-card').hidden = true;
+  $('end-title').textContent = 'Tutorial complete!';
+  $('end-stats').textContent =
+    "You've learned circles, walls, waves, blocking and chalklings. Ready for a real duel? A Beginner bot is a gentle start; " +
+    'Bot, Teams, Same screen and Online are all on the main menu.';
+  $('btn-rematch').hidden = true;
+  $('btn-watch').hidden = true;
+  $('btn-play-bot').hidden = false;
+  $('end').hidden = false;
+}
+
+function endTutorialUi() {
+  document.body.removeAttribute('data-tutorial');
+  $('tutorial-card').hidden = true;
+  $('btn-play-bot').hidden = true;
+  $('btn-rematch').hidden = false;
+  shownCard = '';
+}
+
+function playBeginnerBot() {
+  for (const [group, value] of [['mode', 'bot'], ['level', 'beginner'], ['bots', '1']]) {
+    document.querySelector(`.pick[data-group="${group}"][data-value="${value}"]`)?.click();
+  }
+  startLocalDuel();
+}
+
+// First visit (the tutorial not done yet): the Tutorial button stands out.
+function markTutorialButton() {
+  let done = false;
+  try {
+    done = localStorage.getItem(TUTORIAL_DONE_KEY) === '1';
+  } catch {}
+  $('btn-tutorial').classList.toggle('new', !done);
+  $('tutorial-new').hidden = done;
+}
+markTutorialButton();
+
+// The tutorial's dashed ghosts: what to draw, and where. Drawn in board units,
+// with a line width that stays the same on screen in every view.
+function drawTutorialGuides(ctx, guides, now, scale) {
+  if (!guides.length) return;
+  ctx.save();
+  const pulse = 0.55 + 0.25 * Math.sin(now / 260);
+  ctx.strokeStyle = `rgba(${CONFIG.render.makingColor}, ${pulse})`;
+  ctx.lineWidth = 3 / scale;
+  ctx.setLineDash([10 / scale, 8 / scale]);
+  ctx.lineCap = 'round';
+  for (const g of guides) {
+    ctx.beginPath();
+    if (g.kind === 'circle' || g.kind === 'ring') {
+      ctx.arc(g.center.x, g.center.y, g.kind === 'ring' ? g.r * (1 + 0.25 * Math.sin(now / 200)) : g.r, 0, Math.PI * 2);
+    } else if (g.kind === 'line') {
+      ctx.moveTo(g.from.x, g.from.y);
+      ctx.lineTo(g.to.x, g.to.y);
+    } else {
+      const points = g.kind === 'wave' ? wavePoints(g.from, g.to) : g.points;
+      ctx.moveTo(points[0].x, points[0].y);
+      for (const p of points.slice(1)) ctx.lineTo(p.x, p.y);
+    }
+    ctx.stroke();
+    // An arrowhead shows which way to draw it, where that matters (a wave, a chain, a path).
+    if (g.arrow) drawGuideArrow(ctx, g.from, g.to, scale);
+  }
+  ctx.restore();
+}
+
+function drawGuideArrow(ctx, from, to, scale) {
+  const a = Math.atan2(to.y - from.y, to.x - from.x);
+  const s = 14 / scale;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(to.x - s * Math.cos(a - 0.5), to.y - s * Math.sin(a - 0.5));
+  ctx.lineTo(to.x, to.y);
+  ctx.lineTo(to.x - s * Math.cos(a + 0.5), to.y - s * Math.sin(a + 0.5));
+  ctx.stroke();
+  ctx.setLineDash([10 / scale, 8 / scale]);
 }
 
 // --- Online ----------------------------------------------------------------------
@@ -448,12 +604,13 @@ function frame(now) {
         accumulator -= CONFIG.engine.stepMs;
       }
       for (const e of state.events.splice(0)) onEvent(e, now);
+      if (session.tutorial) updateTutorial();
     }
     sendLiveStroke(now);
     // The duel is over for you when someone has won, or (with several bots)
     // when you've been breached.
     const over = state.winner || (!watching && humansOf().every((id) => state.out?.includes(id)));
-    if (over && !endShown && now - breachAt > 1400) showEnd();
+    if (over && !endShown && !session.tutorial && now - breachAt > 1400) showEnd();
   }
 
   layoutViews();
@@ -477,6 +634,7 @@ function frame(now) {
       renderer.draw(state, live, now, template, { meters: view.name === 'full', angle: view.angle ?? 0, tags: circleTags(state) });
       if (target && view.name !== 'detail') markDetailCircle(board.ctx, target);
       drawCircleGuides(board.ctx, state);
+      if (session.tutorial) drawTutorialGuides(board.ctx, session.tutorial.guides(tutorialApi()), now, view.scale ?? 1);
       if (debug) drawDuelDebug(board.ctx, state);
       board.endView();
     }
@@ -495,6 +653,7 @@ function onEvent(e, now) {
   renderer.handleEvent(e, session.state, now);
   if (e.type === 'breach' || e.type === 'draw') breachAt = now;
   if (e.type === 'placed' && e.kind === 'vigor') session.seats[e.owner].waves++;
+  session.tutorial?.onEvent(e, tutorialApi());
 }
 
 // Online snapshots arrive ~30 times a second. In between, slide flying Vigors
@@ -1118,6 +1277,10 @@ $('btn-resume').addEventListener('click', () => setPaused(false));
 $('btn-paused-menu').addEventListener('click', backToMenu);
 $('btn-save').addEventListener('click', saveStroke);
 $('btn-start').addEventListener('click', startLocalDuel);
+$('btn-tutorial').addEventListener('click', startTutorial);
+$('tc-skip').addEventListener('click', () => session?.tutorial?.skip(tutorialApi()));
+$('tc-exit').addEventListener('click', backToMenu);
+$('btn-play-bot').addEventListener('click', playBeginnerBot);
 $('btn-rematch').addEventListener('click', rematch);
 $('btn-watch').addEventListener('click', keepWatching);
 $('btn-menu').addEventListener('click', backToMenu);
@@ -1194,6 +1357,12 @@ if (window.RITHMATIST_STATIC) document.querySelector('.pick[data-group="mode"][d
 window.rithmatistViews = () => board.views ?? [board.fullView()];
 window.rithmatistHomes = () => session?.state?.homes ?? null;
 window.rithmatistState = () => session?.state ?? null;
+window.rithmatistTutorial = () => {
+  const t = session?.tutorial;
+  if (!t) return null;
+  const api = tutorialApi();
+  return { index: t.index, finished: t.finished, card: t.card(api), guides: t.guides(api) };
+};
 
 showChoiceRows();
 updateControls();

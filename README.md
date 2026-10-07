@@ -42,6 +42,16 @@ The game server is a Node.js web service with WebSocket connections, so it needs
 
 `npm run build:page` builds the whole game into one file, `dist/rithmatist-duel.html`, that runs in any browser with no server. This is the version published as a claude.ai page. Online play is hidden there, because it needs the game server.
 
+## Tutorial
+
+New players: press **Tutorial** on the start screen (it's highlighted until you've finished it once; the browser remembers). It's a practice board against the dummy, in 7 short lessons: your main circle, walls, attacking with waves, blocking a wave, making a chalkling (chain, holding circle, the detail screen, creature, path, erasing the chain), commanding chalklings, and a final breach.
+
+- A card says what to do, and a dashed ghost shows what to draw and where (an arrow shows which way to draw a wave, chain or path). The step moves on as soon as you've done it.
+- If a stroke doesn't count, the card says why in plain words.
+- No countdown and endless chalk, and circles heal while you learn, so you can't lose by accident. Only the last lesson lets you breach the dummy.
+- **Skip step** does the step for you; **Exit tutorial** goes back to the menu. At the end, **Play a Beginner bot** starts a real duel.
+- It works on the split screen and on one board (on one board there's no detail screen lesson).
+
 ## The four lines
 
 | Draw | Line | What it does |
@@ -180,7 +190,7 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 121 tests covering:
+There are 128 tests covering:
 - the recognizer
 - the duel engine (the start countdown and smallest main circle, damage, how spiky waves are, walls stopping waves, the wall limit, breach)
 - bind points
@@ -188,6 +198,7 @@ There are 121 tests covering:
 - the chalk limit
 - the bots (including all ten levels ranking in order)
 - free-for-alls of 3 to 10 players (territories, knock-outs, last one standing)
+- the tutorial (every lesson can be done or skipped, a bad stroke is explained, nobody loses by accident)
 - team games (no friendly damage, walls stopping teammates' waves, last team standing, bot teams playing out)
 - online play (two real connections, checking both see the same duel)
 

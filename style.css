@@ -407,3 +407,111 @@ body[data-facing] .hud {
 body[data-facing] .hud h1 {
   display: none;
 }
+
+/* --- The tutorial ------------------------------------------------------------------ */
+
+.tutorial-row {
+  align-items: center;
+}
+
+/* First visit: the Tutorial button stands out. */
+#btn-tutorial.new {
+  background: rgb(190, 175, 255);
+  color: #1d2a23;
+  border-color: rgb(190, 175, 255);
+  font-weight: 600;
+}
+
+#tutorial-new {
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+/* The step card: top middle on one board; on the split screen, over the top of
+   the map (the half you only watch), out of the way of your drawing. */
+#tutorial-card {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100vw - 32px));
+  padding: 10px 14px 12px;
+  background: rgba(14, 20, 17, 0.92);
+  border: 1px solid rgba(190, 175, 255, 0.5);
+  border-radius: 8px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+}
+
+body[data-split='right'] #tutorial-card {
+  left: 16px;
+  transform: none;
+  width: calc(var(--map-w, 50vw) - 32px);
+}
+
+body[data-split='left'] #tutorial-card {
+  left: auto;
+  right: 16px;
+  transform: none;
+  width: calc(var(--map-w, 50vw) - 32px);
+}
+
+#tutorial-card[hidden] {
+  display: none;
+}
+
+.tc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+.tc-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.tc-buttons button {
+  padding: 3px 8px;
+  min-height: 0;
+  font-size: 12px;
+}
+
+#tutorial-card h3 {
+  margin: 4px 0 2px;
+  font-size: 17px;
+}
+
+#tc-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+#tc-feedback {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: rgb(190, 230, 190);
+}
+
+#tc-feedback:empty {
+  display: none;
+}
+
+/* During the tutorial the card replaces the hint, and the Command buttons sit
+   just above the other buttons (the top is the card's). */
+body[data-tutorial] .hud {
+  display: none;
+}
+
+body[data-tutorial] .side-controls .chalkling-picker {
+  position: absolute;
+  top: auto;
+  left: 0;
+  right: auto;
+  bottom: calc(100% + 8px);
+  max-width: none;
+  white-space: nowrap;
+}

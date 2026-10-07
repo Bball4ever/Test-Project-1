@@ -66,6 +66,10 @@
           An unofficial, non-commercial fan game based on Brandon Sanderson's <i>The Rithmatist</i>. Not affiliated
           with or endorsed by Brandon Sanderson or Dragonsteel Entertainment.
         </p>
+        <div class="choice tutorial-row">
+          <button id="btn-tutorial">Tutorial</button>
+          <span id="tutorial-new" hidden>New here? Start with the tutorial: about 4 minutes, step by step.</span>
+        </div>
         <p>
           Draw a <b>circle</b> first: it's your Line of Warding, and you stand inside it. Breach the other circle
           with <b>waves</b> (Lines of Vigor, at least 3 humps): the more <b>curved</b> the humps, the harder it hits circles and walls; the more <b>spiky</b>, the harder it hits chalklings. <b>Straight lines</b> (Lines of Forbiddance) are walls, up to 8 at a time. To make a
@@ -192,10 +196,25 @@
         <p id="end-stats"></p>
         <div class="choice">
           <button id="btn-watch" hidden>Keep watching</button>
+          <button id="btn-play-bot" class="primary" hidden>Play a Beginner bot</button>
           <button id="btn-rematch" class="primary">Rematch</button>
           <button id="btn-menu">Main menu</button>
         </div>
       </div>
+    </div>
+
+    <!-- The tutorial's step card: what to do now. -->
+    <div id="tutorial-card" hidden>
+      <div class="tc-head">
+        <span id="tc-step"></span>
+        <span class="tc-buttons">
+          <button id="tc-skip" title="Do this step for me">Skip step</button>
+          <button id="tc-exit">Exit tutorial</button>
+        </span>
+      </div>
+      <h3 id="tc-title"></h3>
+      <p id="tc-text"></p>
+      <p id="tc-feedback"></p>
     </div>
 
     <pre id="debug-panel" hidden></pre>
