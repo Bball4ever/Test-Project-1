@@ -372,6 +372,8 @@ function onNetMessage(msg) {
         : `Joined room ${msg.code}.`,
     );
   } else if (msg.t === 'start' && session?.net) {
+    // Split screen (map, Your area and the detail screen) or one board, as picked.
+    session.screen = choices.screen;
     session.cache = new Map();
     session.state = null;
     for (const side of SIDES) Object.assign(session.seats[side], { live: null, eraser: false, making: false, detailPick: false, control: 'remote', waves: 0 });
@@ -861,7 +863,9 @@ function placeControls() {
   boxes.forEach((box, i) => {
     const id = humans[i] ?? '';
     set(box, 'side', id);
-    let x = id === 'right' ? 'right' : 'left';
+    // On the split screen the buttons sit at the bottom of the map half (style.css
+    // moves them across when the map is on the right); otherwise on your side.
+    let x = id === 'right' && !isSplit() ? 'right' : 'left';
     if (humans.length > 1 && session.state.homes?.[id]) {
       const h = session.state.homes[id];
       x = view.ox + view.a * h.x + view.c * h.y < view.rect.w / 2 ? 'left' : 'right';
@@ -1189,6 +1193,7 @@ if (window.RITHMATIST_STATIC) document.querySelector('.pick[data-group="mode"][d
 // For automated browser tests: where each panel is right now (read-only).
 window.rithmatistViews = () => board.views ?? [board.fullView()];
 window.rithmatistHomes = () => session?.state?.homes ?? null;
+window.rithmatistState = () => session?.state ?? null;
 
 showChoiceRows();
 updateControls();

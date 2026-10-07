@@ -22,6 +22,9 @@ export function makeSnapshot(state, sent) {
     out: state.out,
     outReasons: state.outReasons,
     drawReason: state.drawReason ?? null,
+    // Who's playing and where their homes are (for the split screen's views).
+    players: state.players,
+    homes: state.homes,
   };
   for (const list of LISTS) {
     snap[list] = state[list].map((thing) => {

@@ -83,9 +83,9 @@ Its label says which: "Attacking (remote)", "Always guarding", and so on. After 
 
 The hint shows the detail, shape and speed so far while you draw, and the label above the chalkling shows its detail, health, bite and speed.
 
-## Split screen (vs. the dummy or a bot)
+## Split screen (vs. the dummy, bots, or online)
 
-On the start screen, **Your screen** chooses **Draw on the right** (the default), **Draw on the left**, or **One board** (the old single view).
+On the start screen, **Your screen** chooses **Draw on the right** (the default), **Draw on the left**, or **One board** (the old single view). Online, each player picks their own: one can use the split screen and detail screen while the other plays on one board.
 
 With a split screen, the screen is split into quarters: the map fills the half away from your drawing side, and your drawing side has two screens, one above the other:
 - **The map** (half the screen) shows the whole battle, turned so your home is at the bottom. Drag to move around, scroll or pinch to zoom, double-click to reset. It's for watching; you don't draw on it.
