@@ -9,26 +9,40 @@ import { closestOnSegment } from './collide.js';
 import { emit } from './damage.js';
 import { release } from './making.js';
 
-function distToPolyline(p, points) {
-  let best = Infinity;
-  for (let i = 1; i < points.length; i++) best = Math.min(best, closestOnSegment(p, points[i - 1], points[i]).dist);
-  return points.length === 1 ? Math.hypot(p.x - points[0].x, p.y - points[0].y) : best;
+// The closest point on a line (its points) to `p`.
+function nearestOnPolyline(p, points) {
+  if (points.length === 1) return { point: points[0], dist: Math.hypot(p.x - points[0].x, p.y - points[0].y) };
+  let best = null;
+  for (let i = 1; i < points.length; i++) {
+    const hit = closestOnSegment(p, points[i - 1], points[i]);
+    if (!best || hit.dist < best.dist) best = hit;
+  }
+  return best;
+}
+
+// The line of ours closest to `at`, if it's within `reach`, and the point on
+// it nearest `at`: { thing, point } or null. The page uses a bigger reach than
+// the engine (a finger is wide), then erases at that point on the line.
+export function nearestErasable(state, side, at, reach = state.makeCfg.eraseReach) {
+  let best = null;
+  const consider = (thing, near) => {
+    if (near.dist <= reach && (!best || near.dist < best.dist)) best = { thing, point: near.point, dist: near.dist };
+  };
+  for (const w of state.walls) if (w.owner === side && !w.gone) consider(w, nearestOnPolyline(at, w.points));
+  for (const c of state.chains) if (c.owner === side) consider(c, nearestOnPolyline(at, c.points));
+  for (const p of state.paths) if (p.owner === side) consider(p, nearestOnPolyline(at, p.points));
+  for (const w of state.wards) {
+    if (w.owner !== side || w.main || w.gone) continue;
+    const d = Math.hypot(at.x - w.center.x, at.y - w.center.y) || 1;
+    const point = { x: w.center.x + ((at.x - w.center.x) / d) * w.radius, y: w.center.y + ((at.y - w.center.y) / d) * w.radius };
+    consider(w, { point, dist: Math.abs(d - w.radius) });
+  }
+  return best && { thing: best.thing, point: best.point };
 }
 
 // The line of ours closest to `at`, if it's within reach.
 export function erasableAt(state, side, at) {
-  const reach = state.makeCfg.eraseReach;
-  let best = null;
-  const consider = (thing, dist) => {
-    if (dist <= reach && (!best || dist < best.dist)) best = { thing, dist };
-  };
-  for (const w of state.walls) if (w.owner === side && !w.gone) consider(w, distToPolyline(at, w.points));
-  for (const c of state.chains) if (c.owner === side) consider(c, distToPolyline(at, c.points));
-  for (const p of state.paths) if (p.owner === side) consider(p, distToPolyline(at, p.points));
-  for (const w of state.wards) {
-    if (w.owner === side && !w.main && !w.gone) consider(w, Math.abs(Math.hypot(at.x - w.center.x, at.y - w.center.y) - w.radius));
-  }
-  return best?.thing ?? null;
+  return nearestErasable(state, side, at)?.thing ?? null;
 }
 
 // The eraser is clicked at `at`. If one of our lines is there, it starts

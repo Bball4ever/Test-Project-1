@@ -14,7 +14,7 @@
 import { CONFIG } from './config.js';
 import { createDuel, step, mainWard, SIDES } from './engine/duel.js';
 import { applyAction } from './engine/actions.js';
-import { erasableAt } from './engine/erase.js';
+import { nearestErasable } from './engine/erase.js';
 import { measureCreature, speedFor } from './engine/chalklings.js';
 import { HumanController } from './controllers/human.js';
 import { DummyController } from './controllers/dummy.js';
@@ -63,7 +63,8 @@ const human = new HumanController(canvas, {
   viewAt(x, y) {
     if (!board.views) return board.fullView();
     const view = board.viewAt(x, y);
-    return view && !view.empty && view.name !== 'map' ? view : null;
+    // (With the Eraser or Detail on, a tap on the map counts too: tap the line there.)
+    return view && !view.empty && (view.name !== 'map' || tappingOn()) ? view : null;
   },
   toWorld: (view, x, y) => board.viewToWorld(view, x, y),
   // Which side does a new stroke belong to? The human's side, or on a shared
@@ -86,12 +87,15 @@ const human = new HumanController(canvas, {
     if (seat.detailPick) return pickDetailCircle(stroke, seat);
     if (!seat.eraser) return;
     stroke.erasing = true; // this press is the eraser, not a stroke
-    const at = stroke.points[0];
-    if (!erasableAt(session.state, stroke.owner, at)) {
-      showToast('Click one of your own lines to erase it.');
+    // A finger is wide: the eraser reaches about 30 pixels on screen, whatever
+    // the view's zoom, and erases the nearest of your lines there.
+    const reach = Math.max(CONFIG.making.eraseReach, ERASER_REACH_PX / (stroke.view?.scale ?? 1));
+    const near = nearestErasable(session.state, stroke.owner, stroke.points[0], reach);
+    if (!near) {
+      showToast('Tap one of your own lines to erase it: a wall, chain, path or small circle (not your main circle).');
       return;
     }
-    act(stroke.owner, { type: 'erase', at });
+    act(stroke.owner, { type: 'erase', at: near.point });
     seat.eraser = false;
     updateControls();
   },
@@ -193,6 +197,16 @@ function teamSeating(players) {
   return facing
     ? { humans: ['left', 'right'], angle: -Math.PI / 2, edges: { right: 'top' } }
     : { humans: [`p${players - 2}`, `p${players - 1}`], angle: 0, edges: {} };
+}
+
+const ERASER_REACH_PX = 30;
+
+// Is the Eraser or Detail on (one person playing)? Then a tap on the map is
+// for that, not for moving the map.
+function tappingOn() {
+  const humans = humansOf();
+  const seat = humans.length === 1 && session?.seats?.[humans[0]];
+  return !!(seat && (seat.eraser || seat.detailPick));
 }
 
 function dist2(a, b) {
@@ -922,6 +936,7 @@ function resetCamera() {
 }
 
 canvas.addEventListener('pointerdown', (e) => {
+  if (e.defaultPrevented) return; // taken as a stroke or a tap (the Eraser or Detail on the map)
   const view = board.views && board.viewAt(e.clientX, e.clientY);
   if (view?.name === 'map') {
     mapPointers.set(e.pointerId, { x: e.clientX, y: e.clientY });

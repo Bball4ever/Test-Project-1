@@ -7,6 +7,8 @@ import { dummyCirclePoints } from '../src/controllers/dummy.js';
 import { CONFIG } from '../src/config.js';
 import { recognize } from '../src/recognizer/index.js';
 import * as S from './fixtures/strokes.js';
+import { erasableAt, nearestErasable } from '../src/engine/erase.js';
+import { applyAction } from '../src/engine/actions.js';
 
 // These tests aren't about the chalk limit, so give both sides endless chalk.
 CONFIG.chalk.supply = Infinity;
@@ -306,4 +308,17 @@ test('a main circle has to be big enough; small circles are fine later (shields)
   assert.match(small.result.reason, /too small/);
   assert.ok(addStroke(state, 'left', S.circle({ cx: 350, cy: 450, r: E.minMainRadius + 15, noise: 1 })).accepted);
   assert.ok(addStroke(state, 'left', S.circle({ cx: 350, cy: 300, r: 45, noise: 1 })).accepted, 'a small shield circle is fine');
+});
+
+test('the eraser: a wider reach (for fingers) finds the nearest of your lines, and erasing there works', () => {
+  const state = createDuel();
+  addStroke(state, 'left', S.circle({ cx: 400, cy: 450, r: 110, noise: 1 }));
+  addStroke(state, 'left', S.line({ x1: 600, y1: 360, x2: 600, y2: 540 }));
+  const tap = { x: 640, y: 450 }; // 40 units off the wall: too far for the engine on its own
+  assert.equal(erasableAt(state, 'left', tap), null);
+  const near = nearestErasable(state, 'left', tap, 50);
+  assert.equal(near.thing.kind, 'wall');
+  assert.ok(Math.abs(near.point.x - 600) < 3, 'the point is on the wall');
+  assert.equal(nearestErasable(state, 'right', tap, 50), null, "not the other player's");
+  assert.equal(applyAction(state, 'left', { type: 'erase', at: near.point }).accepted, true);
 });

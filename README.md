@@ -106,7 +106,7 @@ Same-screen play keeps one board, since two players can't each have their own sp
 
 ## Erasing
 
-Press **Eraser** (or E), then click one of your own lines. The eraser turns itself off, and **3 seconds later** the line is gone (it fades while you wait, and you can keep drawing). You can erase your walls, chains, paths and small circles, but never your main circle or anything of your opponent's.
+Press **Eraser** (or E), then click or tap one of your own lines: anywhere within about 30 pixels of it counts (the nearest of your lines is picked), in Your area, the detail screen or on the map. The eraser turns itself off, and **3 seconds later** the line is gone (it fades while you wait, and you can keep drawing). You can erase your walls, chains, paths and small circles, but never your main circle or anything of your opponent's.
 
 ## Modes
 
@@ -190,7 +190,7 @@ Every number lives in `src/config.js`: thresholds, health, damage, speeds and bo
 npm test
 ```
 
-There are 128 tests covering:
+There are 129 tests covering:
 - the recognizer
 - the duel engine (the start countdown and smallest main circle, damage, how spiky waves are, walls stopping waves, the wall limit, breach)
 - bind points
